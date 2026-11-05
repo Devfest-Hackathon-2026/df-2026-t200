@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import config, gemini, mock
+from app.errors import EmptyResponseError
 
 
 class FakeModels:
@@ -83,3 +84,11 @@ def test_client_selects_vertex_or_api_key(monkeypatch, project, expected):
     assert gemini.client() == "client"
     assert expected.items() <= created.items()
     assert gemini.client() == "client"  # 2回目はキャッシュを使う
+
+
+@pytest.mark.parametrize("text", ["", None, "   "])
+def test_generate_raises_clear_error_on_empty_response(monkeypatch, text):
+    resp = SimpleNamespace(parsed=None, text=text)
+    monkeypatch.setattr(gemini, "client", lambda: SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_k: resp)))
+    with pytest.raises(EmptyResponseError):
+        gemini._generate("m", [], gemini.Answer, "undergrad")

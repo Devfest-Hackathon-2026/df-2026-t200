@@ -8,9 +8,11 @@ import time
 import pymupdf
 import pytest
 from fastapi.testclient import TestClient
+from google.genai import errors as genai_errors
 from make_sample_pdf import make_pdf
 
 from app import config, main, store
+from app.errors import EmptyResponseError
 
 
 @pytest.fixture
@@ -167,12 +169,13 @@ def test_ask_returns_502_with_friendly_message_on_failure(client, sample_pdf, mo
     _wait_done(client, pid)
 
     def boom(*_a, **_k):
-        raise RuntimeError("429 RESOURCE_EXHAUSTED")
+        raise _api_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded for project secret-proj-123")
 
     monkeypatch.setattr(main.mock, "ask", boom)
     res = client.post(f"/api/papers/{pid}/ask", json={"question": "q"})
     assert res.status_code == 502
     assert "レート制限" in res.json()["detail"]
+    assert "secret-proj-123" not in res.json()["detail"]
 
 
 def test_retry_only_allowed_when_failed(client, sample_pdf, monkeypatch):
@@ -183,11 +186,12 @@ def test_retry_only_allowed_when_failed(client, sample_pdf, monkeypatch):
 
 def test_failed_analysis_can_be_retried(client, sample_pdf, monkeypatch):
     original = main.mock.step2
-    monkeypatch.setattr(main.mock, "step2", lambda *_a: (_ for _ in ()).throw(RuntimeError("PERMISSION_DENIED")))
+    monkeypatch.setattr(main.mock, "step2", lambda *_a: (_ for _ in ()).throw(_api_error(403, "PERMISSION_DENIED", "denied on secret-proj-123")))
     pid = _upload(client, sample_pdf).json()["id"]
     paper = _wait_done(client, pid)
     assert paper["status"] == "failed"
     assert "認証" in paper["error"]
+    assert "secret-proj-123" not in paper["error"]
     assert "step1" in paper["results"]  # 失敗前に終わった Step は残る
 
     monkeypatch.setattr(main.mock, "step2", original)
@@ -195,17 +199,37 @@ def test_failed_analysis_can_be_retried(client, sample_pdf, monkeypatch):
     assert _wait_done(client, pid)["status"] == "done"
 
 
+def _api_error(code, status, message):
+    cls = genai_errors.ServerError if code >= 500 else genai_errors.ClientError
+    return cls(code, {"error": {"code": code, "message": message, "status": status}})
+
+
 @pytest.mark.parametrize(
-    ("msg", "expected"),
+    ("exc", "expected"),
     [
-        ("API key not valid", "認証"),
-        ("429 Too Many Requests", "レート制限"),
-        ("404 model not found", "モデルが見つかりません"),
-        ("something else", "解析中にエラー"),
+        (_api_error(401, "UNAUTHENTICATED", "API key not valid"), "認証"),
+        (_api_error(403, "PERMISSION_DENIED", "denied"), "認証"),
+        (_api_error(429, "RESOURCE_EXHAUSTED", "quota"), "レート制限"),
+        (_api_error(404, "NOT_FOUND", "models/gemini-x is not found"), "モデルが見つかりません"),
+        (_api_error(503, "UNAVAILABLE", "overloaded"), "混み合って"),
+        (EmptyResponseError("no text"), "応答"),
+        # 文字列に 401 / 403 が含まれていても、google-genai の例外でなければ認証エラーとは扱わない
+        (RuntimeError("timeout after 401 ms on secret-proj-123"), "解析中にエラー"),
     ],
 )
-def test_error_message_mapping(msg, expected):
-    assert expected in main._error_message(RuntimeError(msg))
+def test_error_message_is_classified_by_type_and_code(exc, expected):
+    msg = main._error_message(exc)
+    assert expected in msg
+    assert "secret-proj-123" not in msg
+    assert str(exc)[:20] not in msg
+
+
+def test_generic_error_does_not_leak_details(client, sample_pdf, monkeypatch):
+    monkeypatch.setattr(main.mock, "step1", lambda *_a: (_ for _ in ()).throw(RuntimeError("Vertex project secret-proj-123 model x")))
+    pid = _upload(client, sample_pdf).json()["id"]
+    paper = _wait_done(client, pid)
+    assert paper["status"] == "failed"
+    assert "secret-proj-123" not in paper["error"]
 
 
 def test_store_is_isolated_per_test():

@@ -11,6 +11,7 @@ from google import genai
 from google.genai import types
 
 from . import config
+from .errors import EmptyResponseError
 from .schemas import Answer, Step1, Step2, Step3
 
 _client: genai.Client | None = None
@@ -64,6 +65,8 @@ def _generate(model: str, contents: list[Any], schema: type, level: str) -> dict
     )
     if resp.parsed is not None:
         return resp.parsed.model_dump(mode="json")
+    if not (resp.text or "").strip():
+        raise EmptyResponseError(f"empty response from {model}")
     return schema.model_validate_json(resp.text).model_dump(mode="json")
 
 

@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import config, mock, store
+from . import config, errors, mock, store
 from .pdf_utils import TooManyPages, TooMuchText, extract_pages, normalize, verify_all
 from .schemas import AskRequest
 
@@ -48,14 +48,8 @@ def _gemini():
 
 
 def _error_message(e: Exception) -> str:
-    text = str(e)
-    if "API key" in text or "PERMISSION_DENIED" in text or "401" in text or "403" in text:
-        return "Gemini の認証に失敗しました。.env の GEMINI_API_KEY または Vertex AI の設定を確認してください。"
-    if "429" in text or "RESOURCE_EXHAUSTED" in text:
-        return "Gemini のレート制限に達しました。少し時間をおいて再実行してください。"
-    if "404" in text and "model" in text.lower():
-        return f"モデルが見つかりません。.env の ANALYSIS_MODEL / QA_MODEL を確認してください（現在: {config.ANALYSIS_MODEL}）。"
-    return f"解析中にエラーが発生しました: {text[:300]}"
+    # 画面と API には決まった文言だけを返す。詳細は呼び出し側で log.exception（paper_id 付き）に残す。
+    return errors.user_message(e)
 
 
 def _run_analysis(paper_id: str) -> None:
