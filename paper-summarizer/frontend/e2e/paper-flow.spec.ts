@@ -9,8 +9,8 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
   await expect(page).toHaveURL(/#\/paper\/[0-9a-f]{16}$/)
 
-  // PDF が描画される
-  await expect(page.locator('.pdf-page[data-page="1"]')).toBeVisible()
+  // PDF が描画される（サーバーを起動した直後は pdf.js の準備に時間がかかる）
+  await expect(page.locator('.pdf-page[data-page="1"]')).toBeVisible({ timeout: 20_000 })
 
   // Step 1: 前提知識マップ（デモモードでも約1秒で届く）
   await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeVisible({ timeout: 20_000 })
@@ -20,9 +20,9 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   // Step 2: タブを開いた時点で最初の段階の根拠が強調され、段階を進めると次の根拠へ移る
   await page.getByRole('tab', { name: /手法の流れと図表/ }).click()
   await expect(page.getByRole('heading', { name: '手法の流れ' })).toBeVisible({ timeout: 20_000 })
-  await expect(page.locator('.textLayer .hl').first()).toBeVisible()
+  await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
   await page.getByRole('button', { name: '次の段階へ' }).click()
-  await expect(page.locator('.textLayer .hl').first()).toBeVisible()
+  await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
 
   // Step 3: 自分の考えを書いてから解説を開く
   await page.getByRole('tab', { name: /批判的思考/ }).click()
@@ -33,7 +33,7 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await expect(page.locator('.textLayer .hl')).toHaveCount(0)
   await reveal.click()
   // 解説を開くと最初の項目までスクロールする
-  await expect(page.locator('.reveal-start')).toBeInViewport()
+  await expect(page.locator('.reveal-start')).toBeInViewport({ timeout: 20_000 })
   await expect(page.getByText('論文の記述').first()).toBeVisible()
   await expect(page.getByText('AIの指摘（要検証）').first()).toBeVisible()
 
@@ -185,22 +185,21 @@ for (const viewport of [
     await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
     await page.getByRole('tab', { name: /批判的思考/ }).click()
     await page.getByRole('button', { name: '書かずに解説を見る' }).click({ timeout: 20_000 })
-    await expect(page.locator('.reveal-start')).toBeInViewport()
-    expect(await pageScroll()).toEqual([0, 0])
+    await expect(page.locator('.reveal-start')).toBeInViewport({ timeout: 20_000 })
+    await expect.poll(pageScroll).toEqual([0, 0])
     // 根拠チップで PDF へ移動する（狭い画面では PDF タブに切り替わる）
     await page
       .locator('.columns')
       .getByRole('button', { name: /^p\.\d/ })
       .first()
       .click()
-    await expect(page.locator('.textLayer .hl').first()).toBeVisible()
-    await page.waitForTimeout(800)
-    expect(await pageScroll()).toEqual([0, 0])
+    await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('.textLayer .hl').first()).toBeInViewport()
+    await expect.poll(pageScroll).toEqual([0, 0])
     if (viewport.width <= 900) await page.getByRole('tab', { name: '解説' }).click()
     await page.getByPlaceholder('質問を入力').fill('この手法の弱点は？')
     await page.getByRole('button', { name: '送信' }).click()
     await expect(page.locator('.msg.assistant .badge')).toBeVisible()
-    await page.waitForTimeout(300)
-    expect(await pageScroll()).toEqual([0, 0])
+    await expect.poll(pageScroll).toEqual([0, 0])
   })
 }
