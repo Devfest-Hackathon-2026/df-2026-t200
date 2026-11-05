@@ -37,6 +37,30 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await expect(page.locator('.msg.assistant .badge')).toBeVisible()
 })
 
+test('moves the PDF highlight between pages and does not scroll back on resize', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+  await expect(page).toHaveURL(/#\/paper\/[0-9a-f]{16}$/)
+  await page.getByRole('tab', { name: /コアロジック/ }).click()
+  await expect(page.getByRole('heading', { name: '手法の流れ' })).toBeVisible({ timeout: 20_000 })
+
+  // 段階1の根拠（1ページ目）→ 段階2の根拠（3ページ目）
+  await page.locator('.stage').getByRole('button', { name: 'p.1' }).click()
+  await expect(page.locator('.pdf-page[data-page="1"] .textLayer .hl').first()).toBeVisible()
+  await page.getByRole('button', { name: '次の段階 →' }).click()
+  await expect(page.locator('.pdf-page[data-page="3"] .textLayer .hl').first()).toBeVisible()
+  await expect(page.locator('.pdf-page[data-page="1"] .textLayer .hl')).toHaveCount(0)
+
+  // 手で先頭に戻してからウィンドウの大きさを変えても、引用の位置へ勝手に戻らない
+  const scroller = page.locator('.pdf-scroll')
+  await page.waitForTimeout(800) // smooth スクロールが終わるのを待つ
+  await scroller.evaluate((el) => el.scrollTo({ top: 0 }))
+  await page.setViewportSize({ width: 1200, height: 800 })
+  await page.waitForTimeout(1000)
+  expect(await scroller.evaluate((el) => el.scrollTop)).toBeLessThan(50)
+  await expect(page.locator('.pdf-page[data-page="3"] .textLayer .hl').first()).toBeAttached()
+})
+
 test('rejects a non-PDF file with a clear message', async ({ page }) => {
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles({ name: 'note.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') })

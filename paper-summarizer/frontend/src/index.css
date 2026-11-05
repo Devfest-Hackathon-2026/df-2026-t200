@@ -347,6 +347,17 @@ h4 {
   border-radius: 2px;
   outline: 2px solid rgba(255, 170, 0, 0.6);
 }
+.pdf-page-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 0.9rem;
+}
 .pdf-error {
   padding: 24px;
   color: var(--danger);
