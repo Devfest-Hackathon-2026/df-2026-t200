@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Health, type Paper } from './api'
+import { api, type Health } from './api'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { PdfViewer, type PdfViewerHandle } from './components/PdfViewer'
 import { QaPanel } from './components/QaPanel'
 import { Step1Map } from './components/Step1Map'
 import { Step2Walkthrough } from './components/Step2Walkthrough'
 import { Step3Critical } from './components/Step3Critical'
+import { TabList } from './components/TabList'
 import { Upload } from './components/Upload'
+import { usePaper } from './hooks/usePaper'
 import { JumpContext } from './jump'
+
+const VIEWS = [
+  { value: 'explain', label: '解説' },
+  { value: 'pdf', label: 'PDF' },
+] as const
 
 const STEPS = [
   { n: 1, key: 'step1', title: '前提知識マップ', verb: '知る' },
@@ -14,39 +22,56 @@ const STEPS = [
   { n: 3, key: 'step3', title: '批判的思考チェック', verb: '疑う' },
 ] as const
 
+/** これ以下の幅では PDF と解説を並べず、タブで切り替える（index.css の @media と同じ値） */
+const NARROW_QUERY = '(max-width: 900px)'
+const isNarrow = () => window.matchMedia?.(NARROW_QUERY).matches ?? false
+
 const paperIdFromHash = () => window.location.hash.match(/^#\/paper\/([0-9a-f]{16})$/)?.[1] ?? null
 
 function PaperView({ id, health }: { id: string; health: Health | null }) {
-  const [paper, setPaper] = useState<Paper | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { paper, error, notFound, refresh } = usePaper(id)
+  const [retryError, setRetryError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
   const [step, setStep] = useState(1)
+  const [view, setView] = useState<'pdf' | 'explain'>('explain')
   const viewer = useRef<PdfViewerHandle>(null)
-  const jump = useCallback((page: number, quote?: string) => viewer.current?.jumpTo(page, quote), [])
+  const jump = useCallback((page: number, quote?: string) => {
+    if (!isNarrow()) return viewer.current?.jumpTo(page, quote)
+    // 狭い画面では先に PDF を表示し、ページの大きさが決まってから移動する
+    setView('pdf')
+    requestAnimationFrame(() => viewer.current?.jumpTo(page, quote))
+  }, [])
+  // Step を切り替えたら、前の Step で付けた PDF の強調を消す
+  const selectStep = (n: number) => {
+    if (n !== step) viewer.current?.clearHighlight()
+    setStep(n)
+  }
 
-  // ローカルではポーリング（本番は Firestore のリアルタイムリスナーで置き換える）
-  useEffect(() => {
-    let alive = true
-    let timer: number | undefined
-    const tick = async () => {
-      try {
-        const p = await api.get(id)
-        if (!alive) return
-        setPaper(p)
-        setError(null)
-        if (p.status !== 'done' && p.status !== 'failed') timer = window.setTimeout(tick, 1500)
-      } catch (e) {
-        if (alive) setError((e as Error).message)
-      }
+  const retry = async () => {
+    setRetrying(true)
+    setRetryError(null)
+    try {
+      await api.retry(id)
+      refresh()
+    } catch (e) {
+      setRetryError((e as Error).message)
+    } finally {
+      setRetrying(false)
     }
-    tick()
-    return () => {
-      alive = false
-      window.clearTimeout(timer)
-    }
-  }, [id])
+  }
 
-  if (error) return <div className="center error">{error}</div>
-  if (!paper) return <div className="center muted">読み込み中…</div>
+  if (notFound) return <NotFound />
+  if (!paper) {
+    return error ? (
+      <div className="center">
+        <p className="error" role="alert">
+          論文を読み込めませんでした（{error}）。自動で再試行しています…
+        </p>
+      </div>
+    ) : (
+      <div className="center muted">読み込み中…</div>
+    )
+  }
 
   const r = paper.results
   const ready = { 1: !!r.step1, 2: !!r.step2, 3: !!r.step3 } as Record<number, boolean>
@@ -54,53 +79,89 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
 
   return (
     <JumpContext.Provider value={jump}>
-      <div className="workspace">
-        <div className="pane-left">
+      <TabList
+        className="view-switch"
+        label="表示の切り替え"
+        idPrefix="view"
+        panelId={(v) => `view-panel-${v}`}
+        items={VIEWS}
+        selected={view}
+        onSelect={setView}
+      />
+      <div className={`workspace show-${view}`}>
+        <div className="pane-left" id="view-panel-pdf" role="tabpanel" aria-labelledby="view-tab-pdf">
           <PdfViewer ref={viewer} url={api.pdfUrl(id)} />
         </div>
-        <div className="pane-right">
+        <div className="pane-right" id="view-panel-explain" role="tabpanel" aria-labelledby="view-tab-explain">
           <div className="paper-title">
-            <strong>{r.step1?.title ?? paper.filename}</strong>
+            <h1>{r.step1?.title ?? paper.filename}</h1>
             <span className="muted small">
               {paper.page_count}ページ・{paper.level === 'grad' ? '大学院生向け' : '学部生向け'}
             </span>
           </div>
-          <nav className="tabs" role="tablist">
-            {STEPS.map((s) => (
-              <button
-                key={s.n}
-                type="button"
-                role="tab"
-                aria-selected={step === s.n}
-                className={`tab ${step === s.n ? 'active' : ''}`}
-                onClick={() => setStep(s.n)}
-              >
-                <span className="tab-step">
-                  Step {s.n}・{s.verb}
-                  {!ready[s.n] && working && <span className="spinner" aria-label="生成中" />}
-                </span>
-                <span className="tab-title">{s.title}</span>
-              </button>
-            ))}
-          </nav>
+          <TabList
+            className="tabs"
+            label="学習のステップ"
+            idPrefix="step"
+            panelId="step-panel"
+            selected={step}
+            onSelect={selectStep}
+            items={STEPS.map((s) => ({
+              value: s.n,
+              className: 'tab',
+              label: (
+                <>
+                  <span className="tab-step">
+                    Step {s.n}・{s.verb}
+                    {!ready[s.n] && working && <span className="spinner" role="img" aria-label="生成中" />}
+                  </span>
+                  <span className="tab-title">{s.title}</span>
+                </>
+              ),
+            }))}
+          />
+          {error && (
+            <div className="error banner" role="alert">
+              通信に失敗しました（{error}）。自動で再試行しています…
+            </div>
+          )}
           {paper.status === 'failed' && (
-            <div className="error banner">
-              {paper.error}
-              <button type="button" className="btn" onClick={() => api.retry(id).then(() => window.location.reload())}>
+            <div className="error banner" role="alert">
+              <span>
+                {paper.error}
+                {retryError && <span className="small"> / 再実行に失敗しました: {retryError}</span>}
+              </span>
+              <button type="button" className="btn" onClick={retry} disabled={retrying}>
                 再実行
               </button>
             </div>
           )}
-          <div className="step-scroll">
-            {step === 1 && (r.step1 ? <Step1Map data={r.step1} paperId={id} /> : <Pending working={working} label="前提知識マップ" />)}
-            {step === 2 && (r.step2 ? <Step2Walkthrough data={r.step2} /> : <Pending working={working} label="ウォークスルー" />)}
-            {step === 3 &&
-              (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
+          <div className="step-scroll" id="step-panel" role="tabpanel" aria-labelledby={`step-tab-${step}`} tabIndex={0}>
+            <ErrorBoundary key={step} title="このStepを表示できませんでした">
+              {step === 1 && (r.step1 ? <Step1Map data={r.step1} paperId={id} /> : <Pending working={working} label="前提知識マップ" />)}
+              {step === 2 && (r.step2 ? <Step2Walkthrough data={r.step2} /> : <Pending working={working} label="ウォークスルー" />)}
+              {step === 3 &&
+                (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
+            </ErrorBoundary>
           </div>
           {health && <QaPanel paperId={id} initial={paper.messages} currentStep={step} />}
         </div>
       </div>
     </JumpContext.Provider>
+  )
+}
+
+function NotFound() {
+  return (
+    <div className="center">
+      <div className="not-found">
+        <p>論文が見つかりません</p>
+        <p className="muted small">URLが間違っているか、データが削除された可能性があります。</p>
+        <button type="button" className="btn primary" onClick={() => (window.location.hash = '#/')}>
+          アップロード画面へ戻る
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -135,14 +196,15 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <a href="#/" className="brand">
-          PaperSummarizer <span className="muted">for Students</span>
+          PaperSummarizer <span className="muted brand-sub">for Students</span>
         </a>
         {health?.demo_mode && (
           <span className="badge demo" title="Gemini の認証情報が未設定のため、サンプルの解析結果を表示しています">
-            デモモード（サンプルデータ）
+            <span className="wide-only">デモモード（サンプルデータ）</span>
+            <span className="narrow-only">デモ</span>
           </span>
         )}
-        {health && !health.demo_mode && <span className="muted small">Gemini: {health.analysis_model}</span>}
+        {health && !health.demo_mode && <span className="muted small wide-only">Gemini: {health.analysis_model}</span>}
         <span className="spacer" />
         {id && (
           <a href="#/" className="btn">
@@ -153,11 +215,13 @@ export default function App() {
       {health === null && (
         <div className="error banner">バックエンド（http://localhost:8000）に接続できません。起動しているか確認してください。</div>
       )}
-      {id ? (
-        <PaperView key={id} id={id} health={health ?? null} />
-      ) : (
-        <Upload health={health ?? null} onOpen={(pid) => (window.location.hash = `#/paper/${pid}`)} />
-      )}
+      <ErrorBoundary key={id ?? 'upload'} title="画面を表示できませんでした">
+        {id ? (
+          <PaperView key={id} id={id} health={health ?? null} />
+        ) : (
+          <Upload health={health ?? null} onOpen={(pid) => (window.location.hash = `#/paper/${pid}`)} />
+        )}
+      </ErrorBoundary>
     </div>
   )
 }

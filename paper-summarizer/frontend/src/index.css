@@ -42,17 +42,34 @@ button {
   color: inherit;
 }
 h1,
-h3,
-h4 {
+h2,
+h3 {
   line-height: 1.35;
 }
-h3 {
+h2 {
   font-size: 1rem;
   margin: 0 0 8px;
 }
-h4 {
+h3 {
   font-size: 0.92rem;
   margin: 12px 0 6px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.field-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 6px;
 }
 
 .muted {
@@ -90,6 +107,12 @@ h4 {
   border-radius: 8px;
   padding: 8px 12px;
   margin: 8px 0;
+}
+.error.boundary {
+  margin: 16px;
+}
+.error.boundary p {
+  margin: 0 0 8px;
 }
 .error.banner {
   margin: 8px 16px;
@@ -136,10 +159,120 @@ h4 {
   flex-direction: column;
   background: var(--bg);
 }
+.view-switch,
+.narrow-only {
+  display: none;
+}
+
+/* 狭い画面: PDF と解説を上下に並べず、タブで切り替える（App.tsx の NARROW_QUERY と同じ幅） */
 @media (max-width: 900px) {
+  .wide-only,
+  .brand-sub {
+    display: none;
+  }
+  .narrow-only {
+    display: inline;
+  }
+  .topbar {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .brand {
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .topbar .btn {
+    white-space: nowrap;
+    flex: none;
+  }
+  .view-switch {
+    display: block;
+  }
+  .view-switch .tablist {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 6px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .view-switch button {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 6px 0;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .view-switch button.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: #174ea6;
+  }
   .workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: 45vh 1fr;
+    display: flex;
+    flex-direction: column;
+  }
+  .workspace > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .workspace.show-pdf .pane-right,
+  .workspace.show-explain .pane-left {
+    display: none;
+  }
+  .pane-left {
+    border-right: none;
+  }
+  .pdf-scroll {
+    padding: 12px 8px;
+  }
+  .paper-title {
+    padding: 8px 12px 2px;
+  }
+  .pane-right .tabs .tablist {
+    gap: 4px;
+    padding: 4px 12px 8px;
+  }
+  .tab {
+    min-width: 0;
+    padding: 4px 6px;
+  }
+  .tab-step {
+    font-size: 0.68rem;
+  }
+  .tab-title {
+    font-size: 0.74rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .step-scroll {
+    padding: 10px 12px 20px;
+  }
+  .qa-head {
+    padding: 8px 12px;
+  }
+  .qa-input {
+    padding: 8px 12px 10px;
+  }
+  .qa-sub {
+    display: none;
+  }
+  .upload-page {
+    padding: 24px 16px;
+  }
+  .hero h1 {
+    font-size: 1.35rem;
+  }
+  .history li button {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .history-meta {
+    justify-content: flex-start;
   }
 }
 
@@ -249,7 +382,7 @@ h4 {
   margin: 0 0 8px;
 }
 .dropzone {
-  margin-top: 24px;
+  margin-top: 4px;
   border: 2px dashed #b8c2d0;
   border-radius: 14px;
   background: var(--surface);
@@ -270,17 +403,42 @@ h4 {
   opacity: 0.6;
   cursor: progress;
 }
+.dropzone + .error,
+.dropzone ~ .history {
+  margin-top: 16px;
+}
 .drop-icon {
   font-size: 2rem;
 }
 .level {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   align-items: center;
-  margin: 14px 4px;
+  margin: 20px 4px 10px;
 }
 .level label {
   cursor: pointer;
+}
+.demo-note {
+  margin: 16px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--ai-soft);
+  color: var(--ai);
+  font-size: 0.88rem;
+}
+.history-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: none;
 }
 .history ul {
   list-style: none;
@@ -347,6 +505,17 @@ h4 {
   border-radius: 2px;
   outline: 2px solid rgba(255, 170, 0, 0.6);
 }
+.pdf-page-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 0.9rem;
+}
 .pdf-error {
   padding: 24px;
   color: var(--danger);
@@ -358,7 +527,11 @@ h4 {
   display: flex;
   flex-direction: column;
 }
-.tabs {
+.paper-title h1 {
+  font-size: 1rem;
+  margin: 0;
+}
+.tabs .tablist {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
@@ -477,27 +650,23 @@ h4 {
 .graph-arrow {
   fill: #a9b3c1;
 }
+.graph-canvas {
+  position: relative;
+}
+.graph-canvas svg {
+  position: absolute;
+  inset: 0;
+}
+.graph-nodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.graph-nodes li {
+  position: absolute;
+}
 .graph-node {
-  cursor: pointer;
-}
-.graph-node rect {
-  fill: #fff;
-  stroke: #a9b3c1;
-  stroke-width: 1.2;
-}
-.graph-node.known rect {
-  fill: var(--surface-2);
-  stroke: #c9cfd8;
-}
-.graph-node.unknown rect {
-  fill: var(--ai-soft);
-  stroke: #e3a33a;
-}
-.graph-node.selected rect {
-  stroke: var(--accent);
-  stroke-width: 2.2;
-}
-.graph-label {
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -508,8 +677,28 @@ h4 {
   line-height: 1.25;
   padding: 0 6px;
   font-weight: 600;
+  background: #fff;
+  border: 1.2px solid #a9b3c1;
+  border-radius: 8px;
+  cursor: pointer;
 }
-.graph-label small {
+.graph-node:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.graph-node.known {
+  background: var(--surface-2);
+  border-color: #c9cfd8;
+}
+.graph-node.unknown {
+  background: var(--ai-soft);
+  border-color: #e3a33a;
+}
+.graph-node.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.graph-node small {
   font-weight: 400;
   color: var(--muted);
   font-size: 0.68rem;
@@ -687,9 +876,25 @@ h4 {
   display: flex;
   flex-direction: column;
 }
+/* 開いても右ペインの3割まで（Step の解説が半分以上の高さを保つ） */
 .qa.open {
-  height: 40%;
-  min-height: 220px;
+  height: 30%;
+  min-height: 200px;
+}
+.qa-bar {
+  display: flex;
+  align-items: center;
+}
+.qa:not(.open) .qa-bar {
+  padding-right: 4px;
+}
+.qa:not(.open) .qa-bar .qa-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px 8px 0;
+}
+.qa.open .qa-bar .qa-head {
+  flex: 1;
 }
 .qa-head {
   display: flex;
@@ -700,6 +905,7 @@ h4 {
   background: none;
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
 }
 .qa-toggle {
   margin-left: auto;
@@ -740,8 +946,19 @@ h4 {
 }
 .qa-input input {
   flex: 1;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 10px;
   font: inherit;
+}
+.not-found {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.not-found p {
+  margin: 0;
 }

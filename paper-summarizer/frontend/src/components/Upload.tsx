@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type Health, type PaperSummary } from '../api'
+import { api, type Health, type Level, type PaperSummary } from '../api'
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '待機中',
@@ -10,6 +10,16 @@ const STATUS_LABEL: Record<string, string> = {
   failed: '失敗',
 }
 
+const LEVEL_LABEL: Record<Level, string> = { undergrad: '学部生向け', grad: '大学院生向け' }
+
+/** 一覧に出す日時（ブラウザの時刻で YYYY/MM/DD HH:mm）。読めない値は出さない */
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  if (!iso || Number.isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id: string) => void }) {
   const [level, setLevel] = useState<'undergrad' | 'grad'>('undergrad')
   const [busy, setBusy] = useState(false)
@@ -17,16 +27,21 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
   const [drag, setDrag] = useState(false)
   const [papers, setPapers] = useState<PaperSummary[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  // state の更新を待たずに二重のアップロードを防ぐ
+  const busyRef = useRef(false)
 
   useEffect(() => {
     api.list().then(setPapers, () => setPapers([]))
   }, [])
 
   async function handle(file: File | undefined) {
-    if (!file) return
+    // 同じファイルを選び直しても change が起きるよう、選択欄は毎回空に戻す
+    if (inputRef.current) inputRef.current.value = ''
+    if (!file || busyRef.current) return
     setError(null)
     if (file.type && file.type !== 'application/pdf') return setError('PDF ファイルを選んでください')
     if (health && file.size > health.max_upload_mb * 1024 * 1024) return setError(`ファイルサイズの上限は ${health.max_upload_mb}MB です`)
+    busyRef.current = true
     setBusy(true)
     try {
       const res = await api.upload(file, level)
@@ -34,8 +49,13 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
     } catch (e) {
       setError((e as Error).message)
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
+  }
+
+  const openPicker = () => {
+    if (!busyRef.current) inputRef.current?.click()
   }
 
   return (
@@ -50,6 +70,23 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
         </p>
       </div>
 
+      {health?.demo_mode && (
+        <p className="demo-note" role="note">
+          デモモードのため、表示される解説はサンプルです。
+        </p>
+      )}
+
+      <div className="level" role="radiogroup" aria-label="説明のレベル">
+        <span className="muted small">説明のレベル</span>
+        <label>
+          <input type="radio" name="level" checked={level === 'undergrad'} onChange={() => setLevel('undergrad')} disabled={busy} />{' '}
+          学部生向け
+        </label>
+        <label>
+          <input type="radio" name="level" checked={level === 'grad'} onChange={() => setLevel('grad')} disabled={busy} /> 大学院生向け
+        </label>
+      </div>
+
       <div
         className={`dropzone ${drag ? 'drag' : ''} ${busy ? 'busy' : ''}`}
         onDragOver={(e) => {
@@ -62,10 +99,15 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
           setDrag(false)
           handle(e.dataTransfer.files?.[0])
         }}
-        onClick={() => !busy && inputRef.current?.click()}
+        onClick={openPicker}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+        aria-disabled={busy}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return
+          e.preventDefault() // Space でページがスクロールしないように
+          openPicker()
+        }}
       >
         <input ref={inputRef} type="file" accept="application/pdf" hidden onChange={(e) => handle(e.target.files?.[0])} />
         <div className="drop-icon">📄</div>
@@ -73,26 +115,21 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
         <span className="muted small">テキストを含む PDF（arXiv など）・{health?.max_upload_mb ?? 20}MB まで</span>
       </div>
 
-      <div className="level">
-        <span className="muted small">説明のレベル</span>
-        <label>
-          <input type="radio" checked={level === 'undergrad'} onChange={() => setLevel('undergrad')} /> 学部生向け
-        </label>
-        <label>
-          <input type="radio" checked={level === 'grad'} onChange={() => setLevel('grad')} /> 大学院生向け
-        </label>
-      </div>
       {error && <div className="error">{error}</div>}
 
       {papers.length > 0 && (
         <section className="history">
-          <h3>これまでの論文</h3>
+          <h2>これまでの論文</h2>
           <ul>
             {papers.map((p) => (
               <li key={p.id}>
                 <button type="button" onClick={() => onOpen(p.id)}>
-                  <span>{p.title || p.filename}</span>
-                  <span className={`status ${p.status}`}>{STATUS_LABEL[p.status] ?? p.status}</span>
+                  <span className="history-title">{p.title || p.filename}</span>
+                  <span className="history-meta">
+                    {p.level && <span className="badge">{LEVEL_LABEL[p.level]}</span>}
+                    {formatDate(p.created_at) && <span className="muted small">{formatDate(p.created_at)}</span>}
+                    <span className={`status ${p.status}`}>{STATUS_LABEL[p.status] ?? p.status}</span>
+                  </span>
                 </button>
               </li>
             ))}

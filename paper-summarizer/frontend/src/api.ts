@@ -69,8 +69,20 @@ export type Paper = {
   messages: Message[]
 }
 
-export type PaperSummary = { id: string; filename: string; title: string | null; status: Status; created_at: string }
+export type Level = Paper['level']
+/** 一覧の1件。level は一覧 API が返す場合だけ入る（古いバックエンドでは無い） */
+export type PaperSummary = { id: string; filename: string; title: string | null; status: Status; created_at: string; level?: Level }
 export type Health = { demo_mode: boolean; backend: string; analysis_model: string; max_upload_mb: number }
+
+/** HTTP エラー。status で「存在しない（404）」などを見分ける。 */
+export class ApiError extends Error {
+  readonly status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -81,7 +93,7 @@ async function json<T>(res: Response): Promise<T> {
     } catch {
       /* 本文が JSON でない場合はステータスのみ */
     }
-    throw new Error(detail)
+    throw new ApiError(detail, res.status)
   }
   return res.json() as Promise<T>
 }

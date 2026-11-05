@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CriticalPoint, Origin, Step3 } from '../api'
+import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { EvidenceList } from '../jump'
+
+const isString = (v: unknown): v is string => typeof v === 'string'
 
 function OriginBadge({ origin }: { origin: Origin }) {
   return origin === 'paper' ? (
@@ -18,7 +21,7 @@ function Points({ title, items }: { title: string; items: CriticalPoint[] }) {
   if (!items.length) return null
   return (
     <section className="card">
-      <h3>{title}</h3>
+      <h2>{title}</h2>
       <ul className="points">
         {items.map((p, i) => (
           <li key={i} className={p.origin}>
@@ -33,33 +36,29 @@ function Points({ title, items }: { title: string; items: CriticalPoint[] }) {
 }
 
 export function Step3Critical({ data, paperId }: { data: Step3; paperId: string }) {
-  const key = `thoughts:${paperId}`
-  const [thoughts, setThoughts] = useState<string>(() => {
-    try {
-      return localStorage.getItem(key) ?? ''
-    } catch {
-      return ''
-    }
-  })
+  // 1文字ごとに保存しないよう、書き込みは間引く
+  const [thoughts, setThoughts] = useLocalStorageState(`thoughts:${paperId}`, '', isString)
   const [revealed, setRevealed] = useState(false)
+  const resultsRef = useRef<HTMLParagraphElement>(null)
+  // 解説を開いたら最初の項目までスクロールし、何が出てきたかを見せる
   useEffect(() => {
-    try {
-      localStorage.setItem(key, thoughts)
-    } catch {
-      /* 保存できなくても動作は続ける */
-    }
-  }, [thoughts, key])
+    if (revealed) resultsRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [revealed])
 
   return (
     <div className="step">
       <section className="card think">
-        <h3>まず自分で考える</h3>
+        <h2>まず自分で考える</h2>
         <ul>
           {data.prompts.map((p, i) => (
             <li key={i}>{p}</li>
           ))}
         </ul>
+        <label htmlFor={`thoughts-${paperId}`} className="field-label">
+          あなたの考え
+        </label>
         <textarea
+          id={`thoughts-${paperId}`}
           value={thoughts}
           onChange={(e) => setThoughts(e.target.value)}
           placeholder="あなたの考えをメモしてください（このブラウザにだけ保存されます）"
@@ -79,7 +78,7 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
 
       {revealed && (
         <>
-          <p className="legend small">
+          <p className="legend small reveal-start" ref={resultsRef}>
             <span className="badge paper">論文の記述</span> 論文自身が述べていること（根拠ページ付き）
             <span className="badge ai">AIの指摘・要検証</span> AIの推論。論文の主張ではないので、自分で確かめる
           </p>
@@ -88,7 +87,7 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
           <Points title="限界" items={data.limitations} />
           {data.alternatives.length > 0 && (
             <section className="card">
-              <h3>代替アプローチ</h3>
+              <h2>代替アプローチ</h2>
               {data.alternatives.map((a, i) => (
                 <div key={i} className="sub-card">
                   <div className="row between">
@@ -105,7 +104,7 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
             </section>
           )}
           <section className="card">
-            <h3>輪講で聞かれそうな質問</h3>
+            <h2>輪講で聞かれそうな質問</h2>
             {data.likely_questions.map((q, i) => (
               <details key={i} className="qa-hint">
                 <summary>{q.question}</summary>

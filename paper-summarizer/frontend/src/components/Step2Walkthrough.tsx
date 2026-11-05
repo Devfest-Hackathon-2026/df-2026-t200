@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { Step2 } from '../api'
 import { EvidenceList, PageChip, useJump } from '../jump'
 import { Tex } from './Tex'
@@ -8,23 +8,25 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
   const jump = useJump()
   const stage = data.stages[i]
 
-  // 段階を進めるたびに、左の PDF を説明の根拠箇所へ移動して強調する
-  useEffect(() => {
-    const ev = stage?.evidence?.[0]
+  // 学生が段階を移動したときだけ、左の PDF を説明の根拠箇所へ移動して強調する（タブを開いただけでは動かさない）
+  const goTo = (k: number) => {
+    setI(k)
+    const next = data.stages[k]
+    const ev = next?.evidence?.[0]
     if (ev) jump(ev.page, ev.quote)
-    else if (stage?.figures?.[0]) jump(stage.figures[0].page)
-  }, [i]) // eslint-disable-line react-hooks/exhaustive-deps
+    else if (next?.figures?.[0]) jump(next.figures[0].page)
+  }
 
   if (!stage) return <p className="muted">ウォークスルーを生成できませんでした。</p>
   return (
     <div className="step">
       <section className="card">
-        <h3>手法の流れ</h3>
+        <h2>手法の流れ</h2>
         <p>{data.overview}</p>
         <ol className="stepper">
           {data.stages.map((s, k) => (
             <li key={k}>
-              <button type="button" className={k === i ? 'current' : k < i ? 'done' : ''} onClick={() => setI(k)}>
+              <button type="button" className={k === i ? 'current' : k < i ? 'done' : ''} onClick={() => goTo(k)}>
                 <span className="num">{k + 1}</span>
                 <span>{s.title}</span>
               </button>
@@ -35,9 +37,9 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
 
       <section className="card stage">
         <div className="row between">
-          <h3>
+          <h2>
             {i + 1}. {stage.title}
-          </h3>
+          </h2>
           <EvidenceList items={stage.evidence} />
         </div>
         <p className="explain">{stage.explanation}</p>
@@ -93,13 +95,13 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
         ))}
 
         <div className="row between nav">
-          <button type="button" className="btn" disabled={i === 0} onClick={() => setI(i - 1)}>
+          <button type="button" className="btn" disabled={i === 0} onClick={() => goTo(i - 1)}>
             ← 前の段階
           </button>
           <span className="muted small">
             {i + 1} / {data.stages.length}
           </span>
-          <button type="button" className="btn primary" disabled={i === data.stages.length - 1} onClick={() => setI(i + 1)}>
+          <button type="button" className="btn primary" disabled={i === data.stages.length - 1} onClick={() => goTo(i + 1)}>
             次の段階 →
           </button>
         </div>

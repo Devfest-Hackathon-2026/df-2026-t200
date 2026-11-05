@@ -13,8 +13,8 @@ export default mergeConfig(
       coverage: {
         provider: 'v8',
         include: ['src/**/*.{ts,tsx}'],
-        // PdfViewer（pdf.js + canvas）と起動処理は jsdom で動かないため e2e で確認する
-        exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx', 'src/components/PdfViewer.tsx'],
+        // PdfViewer・PageView（pdf.js + canvas）と起動処理は jsdom で動かないため e2e で確認する
+        exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx', 'src/components/PdfViewer.tsx', 'src/components/PageView.tsx'],
         thresholds: { lines: 80, functions: 80, statements: 80, branches: 80 },
       },
     },

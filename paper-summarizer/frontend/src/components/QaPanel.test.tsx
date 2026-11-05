@@ -11,17 +11,36 @@ describe('QaPanel', () => {
   it('sends a question and shows the grounded answer', async () => {
     const ask = vi.spyOn(api, 'ask').mockResolvedValue({ messages: [user, answer] })
     render(<QaPanel paperId="pid" initial={[]} currentStep={2} />)
-    await userEvent.type(screen.getByPlaceholderText('論文について質問する'), '弱点は？')
+    await userEvent.type(screen.getByLabelText('論文への質問'), '弱点は？')
     await userEvent.click(screen.getByRole('button', { name: '送信' }))
     expect(ask).toHaveBeenCalledWith('pid', '弱点は？', 2)
     expect(await screen.findByText('論文の4ページに書かれています')).toBeInTheDocument()
     expect(screen.getByText('論文に記載')).toBeInTheDocument()
     expect(screen.getByText('確信度: 高')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('回答が届きました')
+  })
+
+  it('starts collapsed with only a one-line input', () => {
+    const { container } = render(<QaPanel paperId="pid" initial={[answer]} currentStep={1} />)
+    expect(screen.getByPlaceholderText('論文について質問する')).toBeInTheDocument()
+    expect(screen.queryByText('論文の4ページに書かれています')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'この手法の弱点は？' })).not.toBeInTheDocument()
+    expect(container.querySelector('.qa')).not.toHaveClass('open')
+    expect(screen.getByText('（1件）')).toBeInTheDocument()
+  })
+
+  it('opens when a question is sent', async () => {
+    vi.spyOn(api, 'ask').mockResolvedValue({ messages: [user, answer] })
+    const { container } = render(<QaPanel paperId="pid" initial={[]} currentStep={1} />)
+    await userEvent.type(screen.getByPlaceholderText('論文について質問する'), '弱点は？{Enter}')
+    expect(container.querySelector('.qa')).toHaveClass('open')
+    expect(await screen.findByText('論文の4ページに書かれています')).toBeInTheDocument()
   })
 
   it('sends a suggested question with one click', async () => {
     const ask = vi.spyOn(api, 'ask').mockResolvedValue({ messages: [user, answer] })
     render(<QaPanel paperId="pid" initial={[]} currentStep={1} />)
+    await userEvent.click(screen.getByRole('button', { name: /根拠付きQ&A/ }))
     await userEvent.click(screen.getByRole('button', { name: 'この手法の弱点は？' }))
     expect(ask).toHaveBeenCalledWith('pid', 'この手法の弱点は？', 1)
   })
@@ -31,13 +50,20 @@ describe('QaPanel', () => {
     render(<QaPanel paperId="pid" initial={[]} currentStep={1} />)
     await userEvent.type(screen.getByPlaceholderText('論文について質問する'), '質問A')
     await userEvent.click(screen.getByRole('button', { name: '送信' }))
-    expect(await screen.findByText('レート制限に達しました')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('レート制限に達しました')
     expect(screen.getByPlaceholderText('論文について質問する')).toHaveValue('質問A')
   })
 
-  it('can be collapsed', async () => {
+  it('can be expanded and collapsed again', async () => {
     render(<QaPanel paperId="pid" initial={[answer]} currentStep={1} />)
-    await userEvent.click(screen.getByRole('button', { name: /根拠付きQ&A/ }))
-    expect(screen.queryByPlaceholderText('論文について質問する')).not.toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: /根拠付きQ&A/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('log')).toHaveTextContent('論文の4ページに書かれています')
+    expect(screen.getByText('論文の4ページに書かれています')).toBeInTheDocument()
+    await userEvent.click(toggle)
+    expect(screen.queryByText('論文の4ページに書かれています')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('論文について質問する')).toBeInTheDocument()
   })
 })

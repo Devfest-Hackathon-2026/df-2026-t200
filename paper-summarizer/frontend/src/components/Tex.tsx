@@ -1,12 +1,13 @@
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { useMemo } from 'react'
+import { KATEX_OPTIONS } from './texOptions'
 
 /** LaTeX を KaTeX で描画する。描画できない式は元の文字列をそのまま出し、該当ページの確認を促す。 */
 export function Tex({ tex, block = false }: { tex: string; block?: boolean }) {
   const html = useMemo(() => {
     try {
-      return katex.renderToString(tex, { displayMode: block, throwOnError: true, strict: 'ignore', output: 'html' })
+      return katex.renderToString(tex, { ...KATEX_OPTIONS, displayMode: block })
     } catch {
       return null
     }
