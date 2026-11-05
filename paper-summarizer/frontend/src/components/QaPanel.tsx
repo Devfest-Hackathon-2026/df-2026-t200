@@ -14,7 +14,8 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [open, setOpen] = useState(true)
+  // 最初は閉じて1行の入力欄だけを出し、Step の解説に高さを譲る。質問したら開く
+  const [open, setOpen] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -24,6 +25,7 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
   async function send(q: string) {
     const question = q.trim()
     if (!question || busy) return
+    setOpen(true)
     setBusy(true)
     setError(null)
     setInput('')
@@ -40,13 +42,34 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
     }
   }
 
+  const form = (
+    <form
+      className="qa-input"
+      onSubmit={(e) => {
+        e.preventDefault()
+        send(input)
+      }}
+    >
+      <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="論文について質問する" disabled={busy} />
+      <button type="submit" className="btn primary" disabled={busy || !input.trim()}>
+        送信
+      </button>
+    </form>
+  )
+
   return (
     <div className={`qa ${open ? 'open' : ''}`}>
-      <button type="button" className="qa-head" onClick={() => setOpen(!open)}>
-        <strong>根拠付きQ&amp;A</strong>
-        <span className="muted small">どのStepからでも質問できます</span>
-        <span className="qa-toggle">{open ? '▾' : '▴'}</span>
-      </button>
+      <div className="qa-bar">
+        <button type="button" className="qa-head" onClick={() => setOpen(!open)}>
+          <strong>根拠付きQ&amp;A</strong>
+          {messages.length > 0 && <span className="muted small">（{messages.length}件）</span>}
+          {open && <span className="muted small qa-sub">どのStepからでも質問できます</span>}
+          <span className="qa-toggle" aria-hidden="true">
+            {open ? '▾' : '▴'}
+          </span>
+        </button>
+        {!open && form}
+      </div>
       {open && (
         <>
           <div className="qa-body">
@@ -75,18 +98,7 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
             {error && <div className="error small">{error}</div>}
             <div ref={endRef} />
           </div>
-          <form
-            className="qa-input"
-            onSubmit={(e) => {
-              e.preventDefault()
-              send(input)
-            }}
-          >
-            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="論文について質問する" disabled={busy} />
-            <button type="submit" className="btn primary" disabled={busy || !input.trim()}>
-              送信
-            </button>
-          </form>
+          {form}
         </>
       )}
     </div>

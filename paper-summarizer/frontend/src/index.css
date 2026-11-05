@@ -698,9 +698,25 @@ h4 {
   display: flex;
   flex-direction: column;
 }
+/* 開いても右ペインの3割まで（Step の解説が半分以上の高さを保つ） */
 .qa.open {
-  height: 40%;
-  min-height: 220px;
+  height: 30%;
+  min-height: 200px;
+}
+.qa-bar {
+  display: flex;
+  align-items: center;
+}
+.qa:not(.open) .qa-bar {
+  padding-right: 4px;
+}
+.qa:not(.open) .qa-bar .qa-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px 8px 0;
+}
+.qa.open .qa-bar .qa-head {
+  flex: 1;
 }
 .qa-head {
   display: flex;
@@ -711,6 +727,7 @@ h4 {
   background: none;
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
 }
 .qa-toggle {
   margin-left: auto;
@@ -751,6 +768,7 @@ h4 {
 }
 .qa-input input {
   flex: 1;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 10px;

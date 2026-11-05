@@ -81,6 +81,23 @@ test('remembers a jump requested before the PDF has loaded', async ({ page }) =>
   await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport({ timeout: 10_000 })
 })
 
+test('Step content keeps at least half of the right pane on a 1440x900 screen', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+  await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeVisible({ timeout: 20_000 })
+  const ratio = () =>
+    page.evaluate(() => document.querySelector('.step-scroll')!.clientHeight / document.querySelector('.pane-right')!.clientHeight)
+  // Q&A は最初は閉じていて、質問例は出ていない
+  await expect(page.getByRole('button', { name: 'この手法の弱点は？' })).toBeHidden()
+  expect(await ratio()).toBeGreaterThanOrEqual(0.5)
+  // 質問すると開くが、それでも解説は半分以上
+  await page.getByPlaceholder('論文について質問する').fill('この手法の弱点は？')
+  await page.getByRole('button', { name: '送信' }).click()
+  await expect(page.locator('.msg.assistant .badge')).toBeVisible()
+  expect(await ratio()).toBeGreaterThanOrEqual(0.5)
+})
+
 test('rejects a non-PDF file with a clear message', async ({ page }) => {
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles({ name: 'note.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') })
