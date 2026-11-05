@@ -26,7 +26,7 @@ jobs:
         working-directory: paper-summarizer/backend
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
@@ -72,7 +72,7 @@ jobs:
         working-directory: paper-summarizer/frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
