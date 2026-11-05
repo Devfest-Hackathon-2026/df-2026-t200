@@ -28,6 +28,22 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
     if (endRef.current) scrollWithin(endRef.current, 'end')
   }, [messages, busy, open])
 
+  // 狭い画面で PDF を見ている間に回答が届いた場合は、解説に戻って Q&A が見えたときに最新の回答までスクロールする
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const hiddenRef = useRef(false)
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!body || typeof ResizeObserver === 'undefined') return
+    hiddenRef.current = body.clientHeight === 0
+    const ro = new ResizeObserver(() => {
+      const nowHidden = body.clientHeight === 0
+      if (hiddenRef.current && !nowHidden && endRef.current) scrollWithin(endRef.current, 'end')
+      hiddenRef.current = nowHidden
+    })
+    ro.observe(body)
+    return () => ro.disconnect()
+  }, [open])
+
   async function send(q: string) {
     const question = q.trim()
     if (!question || busy) return
@@ -86,7 +102,7 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
       </div>
       {open && (
         <>
-          <div className="qa-body" id={bodyId} role="log" aria-label="Q&Aの履歴">
+          <div className="qa-body" id={bodyId} ref={bodyRef} role="log" aria-label="Q&Aの履歴">
             {messages.length === 0 && (
               <div className="suggest">
                 {SUGGESTIONS.map((s) => (

@@ -21,7 +21,7 @@ function setup() {
   inner.appendChild(el)
   box.appendChild(inner)
   document.body.appendChild(box)
-  Object.defineProperty(box, 'clientHeight', { value: 200 })
+  Object.defineProperty(box, 'clientHeight', { value: 200, configurable: true })
   box.scrollTop = 50
   vi.spyOn(box, 'getBoundingClientRect').mockReturnValue(rect(100, 200) as DOMRect)
   vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(rect(400, 40) as DOMRect)
@@ -56,6 +56,16 @@ describe('scrollWithin', () => {
     vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(rect(0, 10) as DOMRect)
     scrollWithin(el, 'start')
     expect(box.scrollTop).toBe(0)
+  })
+
+  it('leaves a hidden container alone instead of resetting it to the top', () => {
+    const { box, el } = setup()
+    Object.defineProperty(box, 'clientHeight', { value: 0 })
+    const scrollTo = vi.fn()
+    box.scrollTo = scrollTo as unknown as typeof box.scrollTo
+    scrollWithin(el, 'end')
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(box.scrollTop).toBe(50)
   })
 
   it('does nothing without a scrolling ancestor', () => {

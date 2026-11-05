@@ -16,7 +16,8 @@ export function scrollContainer(el: Element): HTMLElement | null {
  */
 export function scrollWithin(el: Element, block: 'start' | 'center' | 'end', behavior: ScrollBehavior = 'auto') {
   const box = scrollContainer(el)
-  if (!box) return
+  // 隠れている欄（狭い画面で表示していないタブ）は大きさが 0 になり、位置を測れないので動かさない
+  if (!box || box.clientHeight === 0) return
   const r = el.getBoundingClientRect()
   const offset = r.top - box.getBoundingClientRect().top + box.scrollTop
   const top =

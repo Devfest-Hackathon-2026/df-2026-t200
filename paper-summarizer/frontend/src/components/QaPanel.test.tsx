@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { api } from '../api'
@@ -65,5 +65,34 @@ describe('QaPanel', () => {
     await userEvent.click(toggle)
     expect(screen.queryByText('論文の4ページに書かれています')).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText('質問を入力')).toBeInTheDocument()
+  })
+
+  it('scrolls to the newest answer when the hidden panel becomes visible again', async () => {
+    // 狭い画面で PDF タブを見ている間は Q&A の高さが 0。解説に戻ると高さが付く
+    let onResize = () => {}
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          onResize = cb
+        }
+        observe() {}
+        disconnect() {}
+      },
+    )
+    render(<QaPanel paperId="pid" initial={[user, answer]} currentStep={1} />)
+    await userEvent.click(screen.getByRole('button', { name: /質問と回答/ }))
+    const log = screen.getByRole('log')
+    log.style.overflowY = 'auto'
+    const scrollTo = vi.fn()
+    log.scrollTo = scrollTo as unknown as typeof log.scrollTo
+    let height = 0
+    Object.defineProperty(log, 'clientHeight', { get: () => height, configurable: true })
+    act(() => onResize())
+    expect(scrollTo).not.toHaveBeenCalled()
+    height = 200
+    act(() => onResize())
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    vi.unstubAllGlobals()
   })
 })
