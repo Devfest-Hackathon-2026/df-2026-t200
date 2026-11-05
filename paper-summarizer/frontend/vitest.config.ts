@@ -15,7 +15,7 @@ export default mergeConfig(
         include: ['src/**/*.{ts,tsx}'],
         // PdfViewer（pdf.js + canvas）と起動処理は jsdom で動かないため e2e で確認する
         exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx', 'src/components/PdfViewer.tsx'],
-        thresholds: { lines: 80, functions: 80, statements: 80, branches: 70 },
+        thresholds: { lines: 80, functions: 80, statements: 80, branches: 80 },
       },
     },
   }),
