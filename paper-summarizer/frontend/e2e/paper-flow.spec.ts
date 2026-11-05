@@ -86,8 +86,8 @@ test('Step content keeps at least half of the right pane on a 1440x900 screen', 
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
   await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeVisible({ timeout: 20_000 })
-  const ratio = () =>
-    page.evaluate(() => document.querySelector('.step-scroll')!.clientHeight / document.querySelector('.pane-right')!.clientHeight)
+  const height = (selector: string) => page.locator(selector).evaluate((el) => el.clientHeight)
+  const ratio = async () => (await height('.step-scroll')) / (await height('.pane-right'))
   // Q&A は最初は閉じていて、質問例は出ていない
   await expect(page.getByRole('button', { name: 'この手法の弱点は？' })).toBeHidden()
   expect(await ratio()).toBeGreaterThanOrEqual(0.5)
