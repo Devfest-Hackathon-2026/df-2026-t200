@@ -134,6 +134,19 @@ test('fits a 390px phone screen and switches between PDF and explanation', async
   await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport()
 })
 
+test('on a phone, a page chip opens the PDF at that page even though the PDF was hidden', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+  await expect(page.getByRole('heading', { name: 'おすすめの読む順番' })).toBeVisible({ timeout: 20_000 })
+  // PDF タブを一度も開かずに、後ろのページのチップを押す
+  await page.locator('.reading-order').getByRole('button', { name: 'p.3' }).first().click()
+  await expect(page.getByRole('tab', { name: 'PDF' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport({ ratio: 0.9 })
+  await page.waitForTimeout(500) // 幅が決まった後の描き直しでずれないこと
+  await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport({ ratio: 0.9 })
+})
+
 test('rejects a non-PDF file with a clear message', async ({ page }) => {
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles({ name: 'note.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') })

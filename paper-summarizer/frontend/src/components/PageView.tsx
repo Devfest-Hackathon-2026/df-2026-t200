@@ -8,7 +8,24 @@ export type Target = { page: number; quote?: string; nonce: number }
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 /** PDF の1ページ。画面の近くにある間だけ描画し、離れたら canvas とページの資源を解放する。 */
-export function PageView({ doc, num, width, target }: { doc: PDFDocumentProxy; num: number; width: number; target: Target | null }) {
+export function PageView({
+  doc,
+  num,
+  width,
+  target,
+  settled,
+  onSized,
+  onQuoteScrolled,
+}: {
+  doc: PDFDocumentProxy
+  num: number
+  width: number
+  target: Target | null
+  /** 表示幅が決まり、全ページの大きさがその幅でそろったか（そろう前にスクロールすると位置がずれる） */
+  settled: boolean
+  onSized: (num: number, width: number) => void
+  onQuoteScrolled: (nonce: number) => void
+}) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textRef = useRef<HTMLDivElement>(null)
@@ -29,13 +46,14 @@ export function PageView({ doc, num, width, target }: { doc: PDFDocumentProxy; n
         const vp = page.getViewport({ scale: 1 })
         const scale = width / vp.width
         setSize({ w: vp.width * scale, h: vp.height * scale, scale })
+        onSized(num, width)
       },
       (e) => alive && setError(`このページを読み込めませんでした: ${message(e)}`),
     )
     return () => {
       alive = false
     }
-  }, [doc, num, width])
+  }, [doc, num, width, onSized])
 
   useEffect(() => {
     const el = wrapRef.current
@@ -100,15 +118,16 @@ export function PageView({ doc, num, width, target }: { doc: PDFDocumentProxy; n
     held.run.done.finally(() => held.page.cleanup())
   }, [shouldRender])
 
-  // 強調は描き直すたびに付け直す。スクロールは新しいジャンプ（nonce）のときだけ行う
+  // 強調は描き直すたびに付け直す。スクロールは新しいジャンプ（nonce）のときだけ、配置がそろってから行う
   useEffect(() => {
     if (!target || target.page !== num || !target.quote || !rendered || !textRef.current) return
     const first = highlightQuote(textRef.current, target.quote)
-    if (first && scrolledNonce.current !== target.nonce) {
+    if (first && settled && scrolledNonce.current !== target.nonce) {
       scrolledNonce.current = target.nonce
       first.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      onQuoteScrolled(target.nonce)
     }
-  }, [target, num, rendered])
+  }, [target, num, rendered, settled, onQuoteScrolled])
 
   const style = size
     ? ({ width: size.w, height: size.h, '--scale-factor': size.scale, '--total-scale-factor': size.scale } as CSSProperties)
