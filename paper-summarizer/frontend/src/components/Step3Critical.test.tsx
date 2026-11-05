@@ -30,6 +30,7 @@ describe('Step3Critical', () => {
   it('scrolls only the explanation pane to the first result when the analysis is revealed', async () => {
     const pane = document.createElement('div')
     pane.style.overflowY = 'auto'
+    Object.defineProperty(pane, 'clientHeight', { value: 400 })
     const scrollTo = vi.fn()
     pane.scrollTo = scrollTo as unknown as typeof pane.scrollTo
     document.body.appendChild(pane)
