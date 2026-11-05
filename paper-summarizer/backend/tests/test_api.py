@@ -1,5 +1,6 @@
 """API の結合テスト（デモモード。解析ジョブはバックグラウンドスレッドで実際に走る）。"""
 
+import json
 import threading
 import time
 
@@ -185,3 +186,62 @@ def test_error_message_mapping(msg, expected):
 
 def test_store_is_isolated_per_test():
     assert store.list_papers() == []
+
+
+def _stuck_paper(pdf, status, updated_at=None):
+    """状態を指定した論文を作る。updated_at を渡すと、その時刻に書き換える（止まった解析の再現）。"""
+    pid = store.new_id()
+    store.save_pdf(pid, pdf)
+    store.save(
+        {
+            "id": pid,
+            "filename": "a.pdf",
+            "sha256": "x",
+            "level": "undergrad",
+            "page_count": 3,
+            "status": status,
+            "error": None,
+            "demo": True,
+            "results": {},
+            "messages": [],
+            "created_at": store.now(),
+        }
+    )
+    if updated_at is not None:
+        path = config.PAPER_DIR / f"{pid}.json"
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        path.write_text(json.dumps({**doc, "updated_at": updated_at}), encoding="utf-8")
+    return pid
+
+
+def test_stale_processing_can_be_retried(client, sample_pdf):
+    pid = _stuck_paper(sample_pdf, "processing_step2", "2000-01-01T00:00:00+00:00")
+    assert client.post(f"/api/papers/{pid}/retry").status_code == 200
+    assert _wait_done(client, pid)["status"] == "done"
+
+
+def test_recent_processing_cannot_be_retried(client, sample_pdf):
+    pid = _stuck_paper(sample_pdf, "processing_step2")
+    assert client.post(f"/api/papers/{pid}/retry").status_code == 409
+
+
+def test_double_retry_starts_only_one_job(client, sample_pdf, monkeypatch):
+    started = []
+    monkeypatch.setattr(main, "_start", started.append)
+    pid = _stuck_paper(sample_pdf, "failed")
+    codes = [client.post(f"/api/papers/{pid}/retry").status_code for _ in range(2)]
+    assert codes == [200, 409]
+    assert started == [pid]
+
+
+def test_analysis_failure_before_first_step_marks_failed(sample_pdf):
+    pid = _stuck_paper(sample_pdf, "queued")
+    store.pdf_path(pid).unlink()  # PDF の読み込みで失敗させる
+    main._run_analysis(pid)
+    paper = store.load(pid)
+    assert paper["status"] == "failed"
+    assert paper["error"]
+
+
+def test_analysis_of_missing_paper_does_nothing():
+    main._run_analysis(store.new_id())  # 例外を出さない

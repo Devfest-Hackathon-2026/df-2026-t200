@@ -29,3 +29,6 @@ DEMO_MODE = os.getenv("DEMO_MODE") == "1" or not (GOOGLE_CLOUD_PROJECT or GEMINI
 # PDF をリクエストに直接載せるため上限を設ける（大きいファイルは本番で Cloud Storage URI 渡しにする）。
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "20"))
 MAX_PAGES = int(os.getenv("MAX_PAGES", "100"))
+
+# この秒数より長く更新のない queued / processing_* は、サーバーが途中で落ちたとみなして再実行を受け付ける。
+STALE_AFTER_SEC = int(os.getenv("STALE_AFTER_SEC", "600"))

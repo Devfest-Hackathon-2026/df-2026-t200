@@ -9,6 +9,7 @@
 import hashlib
 import logging
 import threading
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -60,14 +61,16 @@ def _error_message(e: Exception) -> str:
 def _run_analysis(paper_id: str) -> None:
     """Step 1 → 2 → 3 を順に生成し、終わったものから保存する（画面は届いた順に表示）。"""
     with _job_slots:
-        paper = store.load(paper_id)
-        assert paper is not None
-        pdf_bytes = store.pdf_path(paper_id).read_bytes()
-        pages = extract_pages(pdf_bytes)
-        norm_pages = [normalize(p) for p in pages]
-        level = paper["level"]
-        results: dict[str, Any] = paper.get("results", {})
         try:
+            paper = store.load(paper_id)
+            if paper is None:
+                log.warning("analysis skipped: paper=%s not found", paper_id)
+                return
+            pdf_bytes = store.pdf_path(paper_id).read_bytes()
+            pages = extract_pages(pdf_bytes)
+            norm_pages = [normalize(p) for p in pages]
+            level = paper["level"]
+            results: dict[str, Any] = dict(paper.get("results", {}))
             for step in (1, 2, 3):
                 key = f"step{step}"
                 if results.get(key):
@@ -85,12 +88,32 @@ def _run_analysis(paper_id: str) -> None:
                     else:
                         out = g.step3(pdf_bytes, level, results["step1"])
                 results[key] = verify_all(out, norm_pages)
-                store.update(paper_id, results=results)
+                store.set_result(paper_id, key, results[key])
                 log.info("paper=%s %s done", paper_id, key)
             store.update(paper_id, status="done", error=None)
         except Exception as e:  # noqa: BLE001
             log.exception("analysis failed paper=%s", paper_id)
-            store.update(paper_id, status="failed", error=_error_message(e))
+            try:
+                store.update(paper_id, status="failed", error=_error_message(e))
+            except KeyError:
+                log.warning("paper=%s disappeared during analysis", paper_id)
+
+
+def _is_stale(paper: dict[str, Any]) -> bool:
+    stamp = paper.get("updated_at") or paper.get("created_at")
+    try:
+        last = datetime.fromisoformat(stamp)
+    except (TypeError, ValueError):
+        return True
+    return (datetime.now(UTC) - last).total_seconds() > config.STALE_AFTER_SEC
+
+
+def _retryable(paper: dict[str, Any]) -> bool:
+    """失敗した解析と、サーバー停止などで止まったままの解析（一定時間更新なし）を再実行できる。"""
+    status = paper.get("status", "")
+    if status == "failed":
+        return True
+    return (status == "queued" or status.startswith("processing_")) and _is_stale(paper)
 
 
 def _start(paper_id: str) -> None:
@@ -171,10 +194,10 @@ def get_pdf(paper_id: str) -> FileResponse:
 
 @app.post("/api/papers/{paper_id}/retry")
 def retry(paper_id: str) -> dict[str, Any]:
-    paper = _load_or_404(paper_id)
-    if paper["status"] != "failed":
-        raise HTTPException(409, "失敗した解析のみ再実行できます")
-    store.update(paper_id, status="queued", error=None)
+    _load_or_404(paper_id)
+    # 状態の確認と queued への変更を1回の操作で行い、二度押しで解析が2本走らないようにする
+    if store.transition(paper_id, _retryable, status="queued", error=None) is None:
+        raise HTTPException(409, "失敗した解析、または止まったままの解析のみ再実行できます")
     _start(paper_id)
     return {"ok": True}
 
@@ -193,11 +216,9 @@ def ask(paper_id: str, req: AskRequest) -> dict[str, Any]:
         log.exception("ask failed paper=%s", paper_id)
         raise HTTPException(502, _error_message(e)) from e
     out = verify_all(out, [normalize(p) for p in pages])
-    paper = store.load(paper_id) or paper
-    messages = paper.get("messages", [])
-    messages.append({"role": "user", "text": req.question, "created_at": store.now()})
-    messages.append(
-        {"role": "assistant", "text": out["answer"], **{k: out[k] for k in ("source", "evidence", "confidence")}, "created_at": store.now()}
+    paper = store.append_messages(
+        paper_id,
+        {"role": "user", "text": req.question, "created_at": store.now()},
+        {"role": "assistant", "text": out["answer"], **{k: out[k] for k in ("source", "evidence", "confidence")}, "created_at": store.now()},
     )
-    store.update(paper_id, messages=messages)
-    return {"messages": messages}
+    return {"messages": paper["messages"]}

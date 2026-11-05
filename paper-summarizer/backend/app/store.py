@@ -6,11 +6,13 @@ papers/{id}.json に1論文分の状態・結果・会話履歴をまとめて�
 import json
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from .config import PAPER_DIR, UPLOAD_DIR
 
+# プロセス内の更新をすべて直列にする（1論文=1ファイルなので、全体で1つのロックでも十分）
 _lock = threading.Lock()
 
 
@@ -38,30 +40,64 @@ def save_pdf(paper_id: str, data: bytes) -> None:
     pdf_path(paper_id).write_bytes(data)
 
 
-def load(paper_id: str) -> dict[str, Any] | None:
+def _read(paper_id: str) -> dict[str, Any] | None:
     path = _json_path(paper_id)
     if not path.exists():
         return None
-    with _lock:
-        return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def save(paper: dict[str, Any]) -> None:
+def _write(paper: dict[str, Any]) -> None:
     paper["updated_at"] = now()
     path = _json_path(paper["id"])
     tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(paper, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def load(paper_id: str) -> dict[str, Any] | None:
     with _lock:
-        tmp.write_text(json.dumps(paper, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(path)
+        return _read(paper_id)
+
+
+def save(paper: dict[str, Any]) -> None:
+    with _lock:
+        _write(paper)
+
+
+def mutate(paper_id: str, fn: Callable[[dict[str, Any]], dict[str, Any] | None]) -> dict[str, Any] | None:
+    """読み込み → 変更 → 保存を1つのロックの中で行う（Firestore のトランザクションに相当）。
+
+    fn は現在の内容を受け取り、新しい内容を返す。None を返したら保存せず None を返す。
+    """
+    with _lock:
+        paper = _read(paper_id)
+        if paper is None:
+            raise KeyError(paper_id)
+        new = fn(paper)
+        if new is None:
+            return None
+        _write(new)
+        return new
 
 
 def update(paper_id: str, **fields: Any) -> dict[str, Any]:
-    paper = load(paper_id)
-    if paper is None:
-        raise KeyError(paper_id)
-    paper.update(fields)
-    save(paper)
-    return paper
+    return mutate(paper_id, lambda p: {**p, **fields})  # type: ignore[return-value]
+
+
+def set_result(paper_id: str, key: str, value: Any) -> dict[str, Any]:
+    """解析結果を1つだけ書く。ほかの Step の結果や会話は、その時点の最新の内容を残す。"""
+    return mutate(paper_id, lambda p: {**p, "results": {**p.get("results", {}), key: value}})  # type: ignore[return-value]
+
+
+def append_messages(paper_id: str, *messages: dict[str, Any]) -> dict[str, Any]:
+    """会話を末尾に追加する。並行して追加しても、渡した組はまとめて連続して入る。"""
+    return mutate(paper_id, lambda p: {**p, "messages": [*p.get("messages", []), *messages]})  # type: ignore[return-value]
+
+
+def transition(paper_id: str, allowed: Callable[[dict[str, Any]], bool], **fields: Any) -> dict[str, Any] | None:
+    """allowed(現在の内容) が真のときだけ fields を書く（compare-and-set）。書かなければ None。"""
+    return mutate(paper_id, lambda p: {**p, **fields} if allowed(p) else None)
 
 
 def list_papers() -> list[dict[str, Any]]:
