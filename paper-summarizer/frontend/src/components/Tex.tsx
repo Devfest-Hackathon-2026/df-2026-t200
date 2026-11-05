@@ -6,7 +6,7 @@ import { useMemo } from 'react'
 export function Tex({ tex, block = false }: { tex: string; block?: boolean }) {
   const html = useMemo(() => {
     try {
-      return katex.renderToString(tex, { displayMode: block, throwOnError: true, strict: 'ignore', output: 'html' })
+      return katex.renderToString(tex, { displayMode: block, throwOnError: true, strict: 'ignore', output: 'htmlAndMathml' })
     } catch {
       return null
     }

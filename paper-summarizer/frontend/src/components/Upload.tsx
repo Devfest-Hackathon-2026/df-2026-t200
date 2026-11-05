@@ -119,7 +119,7 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
 
       {papers.length > 0 && (
         <section className="history">
-          <h3>これまでの論文</h3>
+          <h2>これまでの論文</h2>
           <ul>
             {papers.map((p) => (
               <li key={p.id}>

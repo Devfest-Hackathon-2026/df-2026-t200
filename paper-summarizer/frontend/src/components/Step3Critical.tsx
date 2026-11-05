@@ -18,7 +18,7 @@ function Points({ title, items }: { title: string; items: CriticalPoint[] }) {
   if (!items.length) return null
   return (
     <section className="card">
-      <h3>{title}</h3>
+      <h2>{title}</h2>
       <ul className="points">
         {items.map((p, i) => (
           <li key={i} className={p.origin}>
@@ -58,13 +58,17 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
   return (
     <div className="step">
       <section className="card think">
-        <h3>まず自分で考える</h3>
+        <h2>まず自分で考える</h2>
         <ul>
           {data.prompts.map((p, i) => (
             <li key={i}>{p}</li>
           ))}
         </ul>
+        <label htmlFor={`thoughts-${paperId}`} className="field-label">
+          あなたの考え
+        </label>
         <textarea
+          id={`thoughts-${paperId}`}
           value={thoughts}
           onChange={(e) => setThoughts(e.target.value)}
           placeholder="あなたの考えをメモしてください（このブラウザにだけ保存されます）"
@@ -93,7 +97,7 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
           <Points title="限界" items={data.limitations} />
           {data.alternatives.length > 0 && (
             <section className="card">
-              <h3>代替アプローチ</h3>
+              <h2>代替アプローチ</h2>
               {data.alternatives.map((a, i) => (
                 <div key={i} className="sub-card">
                   <div className="row between">
@@ -110,7 +114,7 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
             </section>
           )}
           <section className="card">
-            <h3>輪講で聞かれそうな質問</h3>
+            <h2>輪講で聞かれそうな質問</h2>
             {data.likely_questions.map((q, i) => (
               <details key={i} className="qa-hint">
                 <summary>{q.question}</summary>

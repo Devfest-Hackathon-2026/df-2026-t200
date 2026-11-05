@@ -21,7 +21,7 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
   return (
     <div className="step">
       <section className="card">
-        <h3>手法の流れ</h3>
+        <h2>手法の流れ</h2>
         <p>{data.overview}</p>
         <ol className="stepper">
           {data.stages.map((s, k) => (
@@ -37,9 +37,9 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
 
       <section className="card stage">
         <div className="row between">
-          <h3>
+          <h2>
             {i + 1}. {stage.title}
-          </h3>
+          </h2>
           <EvidenceList items={stage.evidence} />
         </div>
         <p className="explain">{stage.explanation}</p>

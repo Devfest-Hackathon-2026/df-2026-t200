@@ -10,7 +10,7 @@ describe('Step3Critical', () => {
     expect(screen.queryByText('実装が単純')).not.toBeInTheDocument()
     const reveal = screen.getByRole('button', { name: '考えを書いたので解説を見る' })
     expect(reveal).toBeDisabled()
-    await userEvent.type(screen.getByRole('textbox'), '実験が少ない')
+    await userEvent.type(screen.getByLabelText('あなたの考え'), '実験が少ない')
     expect(localStorage.getItem('thoughts:p1')).toBe('実験が少ない')
     await userEvent.click(reveal)
     expect(screen.getByText('実装が単純')).toBeInTheDocument()

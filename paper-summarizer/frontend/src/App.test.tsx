@@ -49,6 +49,33 @@ describe('App', () => {
     expect(screen.getByText('問題A')).toBeInTheDocument()
   })
 
+  it('has a step tablist with a labelled tabpanel and arrow-key navigation', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    render(<App />)
+    await screen.findByText('問題A')
+    expect(screen.getByRole('heading', { level: 1, name: 'Sample Paper' })).toBeInTheDocument()
+    const step1Tab = screen.getByRole('tab', { name: /前提知識マップ/ })
+    const panel = screen.getByRole('tabpanel', { name: /前提知識マップ/ })
+    expect(step1Tab).toHaveAttribute('aria-controls', panel.id)
+    expect(step1Tab).toHaveAttribute('tabindex', '0')
+    expect(screen.getByRole('tab', { name: /コアロジック/ })).toHaveAttribute('tabindex', '-1')
+    step1Tab.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    const step2Tab = screen.getByRole('tab', { name: /コアロジック/ })
+    expect(step2Tab).toHaveAttribute('aria-selected', 'true')
+    expect(step2Tab).toHaveFocus()
+    await userEvent.keyboard('{End}')
+    expect(screen.getByRole('tab', { name: /批判的思考/ })).toHaveFocus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(step1Tab).toHaveAttribute('aria-selected', 'true')
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(screen.getByRole('tab', { name: /批判的思考/ })).toHaveAttribute('aria-selected', 'true')
+    await userEvent.keyboard('{Home}')
+    expect(step1Tab).toHaveFocus()
+  })
+
   it('clears the PDF highlight when switching steps', async () => {
     window.location.hash = `#/paper/${paper.id}`
     vi.spyOn(api, 'health').mockResolvedValue(health)

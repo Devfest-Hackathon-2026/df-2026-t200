@@ -47,6 +47,13 @@ describe('Upload', () => {
     expect(screen.getByText('完了')).toBeInTheDocument()
   })
 
+  it('uses consecutive heading levels', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue([{ id: 'old', filename: 'old.pdf', title: 'Old Paper', status: 'done', created_at: '' }])
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: 'これまでの論文' })).toBeInTheDocument()
+  })
+
   it('shows the level selector before the drop zone', () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     render(<Upload health={health} onOpen={vi.fn()} />)

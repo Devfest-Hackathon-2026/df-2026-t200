@@ -5,13 +5,14 @@ import { QaPanel } from './components/QaPanel'
 import { Step1Map } from './components/Step1Map'
 import { Step2Walkthrough } from './components/Step2Walkthrough'
 import { Step3Critical } from './components/Step3Critical'
+import { TabList } from './components/TabList'
 import { Upload } from './components/Upload'
 import { usePaper } from './hooks/usePaper'
 import { JumpContext } from './jump'
 
 const VIEWS = [
-  ['explain', '解説'],
-  ['pdf', 'PDF'],
+  { value: 'explain', label: '解説' },
+  { value: 'pdf', label: 'PDF' },
 ] as const
 
 const STEPS = [
@@ -77,49 +78,47 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
 
   return (
     <JumpContext.Provider value={jump}>
-      <nav className="view-switch" role="tablist" aria-label="表示の切り替え">
-        {VIEWS.map(([v, label]) => (
-          <button
-            key={v}
-            type="button"
-            role="tab"
-            aria-selected={view === v}
-            className={view === v ? 'active' : ''}
-            onClick={() => setView(v)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <TabList
+        className="view-switch"
+        label="表示の切り替え"
+        idPrefix="view"
+        panelId={`view-panel-${view}`}
+        items={VIEWS}
+        selected={view}
+        onSelect={setView}
+      />
       <div className={`workspace show-${view}`}>
-        <div className="pane-left">
+        <div className="pane-left" id="view-panel-pdf" role="region" aria-label="論文のPDF">
           <PdfViewer ref={viewer} url={api.pdfUrl(id)} />
         </div>
-        <div className="pane-right">
+        <div className="pane-right" id="view-panel-explain" role="region" aria-label="解説">
           <div className="paper-title">
-            <strong>{r.step1?.title ?? paper.filename}</strong>
+            <h1>{r.step1?.title ?? paper.filename}</h1>
             <span className="muted small">
               {paper.page_count}ページ・{paper.level === 'grad' ? '大学院生向け' : '学部生向け'}
             </span>
           </div>
-          <nav className="tabs" role="tablist">
-            {STEPS.map((s) => (
-              <button
-                key={s.n}
-                type="button"
-                role="tab"
-                aria-selected={step === s.n}
-                className={`tab ${step === s.n ? 'active' : ''}`}
-                onClick={() => selectStep(s.n)}
-              >
-                <span className="tab-step">
-                  Step {s.n}・{s.verb}
-                  {!ready[s.n] && working && <span className="spinner" aria-label="生成中" />}
-                </span>
-                <span className="tab-title">{s.title}</span>
-              </button>
-            ))}
-          </nav>
+          <TabList
+            className="tabs"
+            label="学習のステップ"
+            idPrefix="step"
+            panelId="step-panel"
+            selected={step}
+            onSelect={selectStep}
+            items={STEPS.map((s) => ({
+              value: s.n,
+              className: 'tab',
+              label: (
+                <>
+                  <span className="tab-step">
+                    Step {s.n}・{s.verb}
+                    {!ready[s.n] && working && <span className="spinner" role="img" aria-label="生成中" />}
+                  </span>
+                  <span className="tab-title">{s.title}</span>
+                </>
+              ),
+            }))}
+          />
           {error && (
             <div className="error banner" role="alert">
               通信に失敗しました（{error}）。自動で再試行しています…
@@ -136,7 +135,7 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
               </button>
             </div>
           )}
-          <div className="step-scroll">
+          <div className="step-scroll" id="step-panel" role="tabpanel" aria-labelledby={`step-tab-${step}`} tabIndex={0}>
             {step === 1 && (r.step1 ? <Step1Map data={r.step1} paperId={id} /> : <Pending working={working} label="前提知識マップ" />)}
             {step === 2 && (r.step2 ? <Step2Walkthrough data={r.step2} /> : <Pending working={working} label="ウォークスルー" />)}
             {step === 3 &&
