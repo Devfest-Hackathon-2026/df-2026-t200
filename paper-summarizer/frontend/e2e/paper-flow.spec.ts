@@ -151,7 +151,7 @@ test('fits a 390px phone screen and switches between PDF and explanation', async
     expect(scroll).toBeLessThanOrEqual(client)
   }
   await page.goto('/')
-  await expect(page.getByRole('button', { name: /論文のPDFを選ぶ/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'PDFを選択' })).toBeVisible()
   await noHorizontalScroll()
 
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
