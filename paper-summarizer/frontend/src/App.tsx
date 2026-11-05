@@ -9,7 +9,7 @@ import { Step3Critical } from './components/Step3Critical'
 import { TabList } from './components/TabList'
 import { Upload } from './components/Upload'
 import { usePaper } from './hooks/usePaper'
-import { JumpContext } from './jump'
+import { JumpContext, type JumpFn } from './jump'
 
 const VIEWS = [
   { value: 'explain', label: '解説' },
@@ -35,8 +35,10 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
   const [step, setStep] = useState(1)
   const [view, setView] = useState<'pdf' | 'explain'>('explain')
   const viewer = useRef<PdfViewerHandle>(null)
-  const jump = useCallback((page: number, quote?: string) => {
-    if (!isNarrow()) return viewer.current?.jumpTo(page, quote)
+  const jump = useCallback<JumpFn>((page, quote, options) => {
+    // 広い画面、または画面を切り替えたくない移動（Step 2 を開いたときの強調など）はそのまま頼む。
+    // PDF が隠れている間の移動は PdfViewer が保留し、表示されたときに行う
+    if (!isNarrow() || options?.switchView === false) return viewer.current?.jumpTo(page, quote)
     // 狭い画面では先に PDF を表示し、ページの大きさが決まってから移動する
     setView('pdf')
     requestAnimationFrame(() => viewer.current?.jumpTo(page, quote))

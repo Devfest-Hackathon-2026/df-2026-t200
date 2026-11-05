@@ -17,10 +17,10 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await page.getByRole('button', { name: '知らない' }).click()
   await expect(page.getByRole('heading', { name: /先に押さえておく概念/ })).toBeVisible()
 
-  // Step 2: タブを開いただけでは PDF は動かず、段階を進めると根拠箇所が強調される
+  // Step 2: タブを開いた時点で最初の段階の根拠が強調され、段階を進めると次の根拠へ移る
   await page.getByRole('tab', { name: /コアロジック/ }).click()
   await expect(page.getByRole('heading', { name: '手法の流れ' })).toBeVisible({ timeout: 20_000 })
-  await expect(page.locator('.textLayer .hl')).toHaveCount(0)
+  await expect(page.locator('.textLayer .hl').first()).toBeVisible()
   await page.getByRole('button', { name: '次の段階 →' }).click()
   await expect(page.locator('.textLayer .hl').first()).toBeVisible()
 
