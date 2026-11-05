@@ -154,10 +154,10 @@ def upload(file: UploadFile = File(...), level: str = Form("undergrad")) -> dict
         raise HTTPException(400, "テキストを含む PDF のみ対応しています（スキャン画像のみの PDF は未対応）")
 
     sha256 = hashlib.sha256(data).hexdigest()
-    existing = store.find_by_hash(sha256, level)
-    if existing:  # 同じ PDF は再解析せず結果を再利用（コスト削減）
-        return {"id": existing, "reused": True}
-
+    # 同じ PDF が解析済みなら、解析結果（results）だけを再利用して再解析を省く（コスト削減）。
+    # 論文の記録はアップロードごとに新しく作り、ほかの人の論文IDや会話履歴は返さない。
+    existing_id = store.find_by_hash(sha256, level)
+    source = store.load(existing_id) if existing_id else None
     paper_id = store.new_id()
     store.save_pdf(paper_id, data)
     store.save(
@@ -167,14 +167,16 @@ def upload(file: UploadFile = File(...), level: str = Form("undergrad")) -> dict
             "sha256": sha256,
             "level": level,
             "page_count": len(pages),
-            "status": "queued",
+            "status": "done" if source else "queued",
             "error": None,
-            "demo": config.DEMO_MODE,
-            "results": {},
+            "demo": source["demo"] if source else config.DEMO_MODE,
+            "results": dict(source["results"]) if source else {},
             "messages": [],
             "created_at": store.now(),
         }
     )
+    if source:
+        return {"id": paper_id, "reused": True}
     _start(paper_id)
     return {"id": paper_id, "reused": False}
 

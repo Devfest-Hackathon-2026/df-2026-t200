@@ -67,11 +67,22 @@ def test_upload_runs_all_steps_and_verifies_evidence(client, sample_pdf):
     assert ev["verified"] is True
 
 
-def test_same_pdf_is_reused_after_done(client, sample_pdf):
+def test_same_pdf_reuses_results_in_a_new_record(client, sample_pdf):
     pid = _upload(client, sample_pdf).json()["id"]
-    _wait_done(client, pid)
-    again = _upload(client, sample_pdf).json()
-    assert again == {"id": pid, "reused": True}
+    original = _wait_done(client, pid)
+    client.post(f"/api/papers/{pid}/ask", json={"question": "Aさんの質問"})
+
+    again = _upload(client, sample_pdf, name="b.pdf").json()
+    assert set(again) == {"id", "reused"}
+    assert again["reused"] is True
+    assert again["id"] != pid  # 他人の論文IDを返さない
+    copy = client.get(f"/api/papers/{again['id']}").json()
+    assert copy["status"] == "done"
+    assert copy["results"] == original["results"]
+    assert copy["messages"] == []  # 他人の会話は見えない
+    assert copy["filename"] == "b.pdf"
+    assert client.get(f"/api/papers/{again['id']}/pdf").content == sample_pdf
+    assert len(client.get(f"/api/papers/{pid}").json()["messages"]) == 2  # 元の論文はそのまま
     # レベルが違えば別の解析
     assert _upload(client, sample_pdf, level="grad").json()["id"] != pid
 
