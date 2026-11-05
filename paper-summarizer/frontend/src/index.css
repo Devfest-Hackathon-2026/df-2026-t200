@@ -1,7 +1,8 @@
 /*
  * 輪講のホワイトボード: 灰色の壁にアルミ枠のホワイトボードを掛け、マーカーで書いた見た目にする。
  * 青 = 構造・リンク・選択中、赤 = AIの指摘（要検証）と未確認だけ、緑 = 論文の記述と照合済みだけ。
- * 手書き風の書体（Klee One）はボードの見出し・概念マップ・短い書き込みだけに使い、操作部品と本文は Noto Sans JP。
+ * 見出し・概念マップ・短い書き込みは丸ゴシック（Zen Maru Gothic、マーカーで書いた線の丸みに近い）。
+ * 本文は字間の均一な Zen Kaku Gothic New、ボタンや札などの短いラベルは UD 書体の BIZ UDPGothic。
  * 要素は傾けない。手書きらしさは SVG の線だけで出す。
  */
 :root {
@@ -22,14 +23,21 @@
   --yellow-edge: #a9820e;
   --sticky: #fbe6a0;
   --hl: rgba(233, 185, 48, 0.45);
-  --font-ui: 'Noto Sans JP', 'Hiragino Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-hand: 'Klee One', 'Noto Sans JP', cursive;
+  --font-ui: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Noto Sans JP', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-head: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'Zen Kaku Gothic New', sans-serif;
+  --font-label: 'BIZ UDPGothic', 'Zen Kaku Gothic New', 'Hiragino Sans', sans-serif;
   --sheet-shadow: 0 1px 3px rgba(36, 40, 44, 0.3);
   font-family: var(--font-ui);
   font-size: 15px;
   color: var(--ink);
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ボタン・タブ・チップ・札などの短いラベルは、文字幅の詰まった UD 書体にする（小さいサイズでもかなの間が空かない）。
+ * 入力欄と記入欄は学生が文章を書く場所なので本文の書体のまま。 */
+:where(button, label, small, .tabs, .chip, .badge) {
+  font-family: var(--font-label);
 }
 
 * {
@@ -61,6 +69,10 @@ textarea {
   font: inherit;
   color: inherit;
 }
+/* 上の font: inherit で消えるので、ボタンにはここでラベル用の書体を当て直す */
+button {
+  font-family: var(--font-label);
+}
 a {
   color: var(--blue);
 }
@@ -75,7 +87,8 @@ h1,
 h2,
 h3 {
   line-height: 1.35;
-  font-family: var(--font-hand);
+  font-family: var(--font-head);
+  letter-spacing: -0.03em;
   font-weight: 600;
 }
 h2 {
@@ -239,7 +252,8 @@ h3 {
   color: var(--ink);
 }
 .brand-name {
-  font-family: var(--font-hand);
+  font-family: var(--font-head);
+  letter-spacing: -0.03em;
   font-weight: 600;
   font-size: 1.35rem;
   line-height: 1.2;
@@ -712,7 +726,8 @@ h3 {
   color: #fff;
 }
 .tab-verb {
-  font-family: var(--font-hand);
+  font-family: var(--font-head);
+  letter-spacing: -0.03em;
   font-weight: 600;
   font-size: 1.15rem;
   line-height: 1.3;
@@ -789,7 +804,8 @@ h3 {
   min-width: 0;
 }
 .summary3-q {
-  font-family: var(--font-hand);
+  font-family: var(--font-head);
+  letter-spacing: -0.03em;
   font-weight: 600;
   font-size: 1.1rem;
   color: var(--blue);
@@ -855,11 +871,11 @@ h3 {
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-family: var(--font-hand);
+  font-family: var(--font-head);
+  letter-spacing: -0.03em;
   font-weight: 600;
   font-size: 0.95rem;
   line-height: 1.2;
-  letter-spacing: -0.04em;
   padding: 0 10px;
   background: none;
   border: none;
@@ -873,7 +889,7 @@ h3 {
   color: var(--ink-2);
 }
 .node-tag {
-  font-family: var(--font-ui);
+  font-family: var(--font-label);
   font-weight: 700;
   font-size: 0.6875rem;
   line-height: 1.3;
@@ -1001,7 +1017,8 @@ h3 {
   background: none;
   padding: 4px 16px;
   cursor: pointer;
-  font-family: var(--font-hand);
+  font-family: var(--font-head);
+  letter-spacing: -0.03em;
   font-weight: 600;
   font-size: 1.05rem;
   line-height: 1.3;
@@ -1030,7 +1047,7 @@ h3 {
   vector-effect: non-scaling-stroke;
 }
 .stepper .num {
-  font-family: var(--font-ui);
+  font-family: var(--font-label);
   font-size: 0.9rem;
   font-weight: 700;
 }
@@ -1133,7 +1150,8 @@ h3 {
 }
 .sticky-label {
   display: block;
-  font-family: var(--font-hand);
+  font-family: var(--font-head);
+  letter-spacing: -0.03em;
   font-weight: 600;
   font-size: 1.05rem;
   margin-bottom: 4px;
@@ -1296,7 +1314,8 @@ h3 {
   white-space: nowrap;
 }
 .qa-title {
-  font-family: var(--font-hand);
+  font-family: var(--font-head);
+  letter-spacing: -0.03em;
   font-weight: 600;
   font-size: 1.15rem;
 }
@@ -1474,6 +1493,9 @@ h3 {
     grid-template-columns: 1fr;
   }
   .graph-node {
+    /* 狭い画面では、長いカタカナ語（ニューラルネットワークなど）が1行に収まるよう詰まった書体にする */
+    font-family: var(--font-label);
+    letter-spacing: 0;
     font-size: 0.85rem;
     padding: 0 8px;
   }
