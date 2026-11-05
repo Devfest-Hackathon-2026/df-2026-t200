@@ -98,6 +98,42 @@ test('Step content keeps at least half of the right pane on a 1440x900 screen', 
   expect(await ratio()).toBeGreaterThanOrEqual(0.5)
 })
 
+test('fits a 390px phone screen and switches between PDF and explanation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const noHorizontalScroll = async () => {
+    const [scroll, client] = await page.locator('html').evaluate((el) => [el.scrollWidth, el.clientWidth])
+    expect(scroll).toBeLessThanOrEqual(client)
+  }
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '英語論文を、3つのステップで自分のものに。' })).toBeVisible()
+  await noHorizontalScroll()
+
+  await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+  await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeVisible({ timeout: 20_000 })
+  await noHorizontalScroll()
+  // 上部のバーは1行に収まり、「新しい論文」が縦に折り返さない
+  const button = await page.getByRole('link', { name: '新しい論文' }).boundingBox()
+  expect(button!.height).toBeLessThan(48)
+  expect((await page.locator('.topbar').boundingBox())!.height).toBeLessThan(70)
+  // Step のタブは3つとも画面内に収まる
+  for (const name of [/前提知識/, /コアロジック/, /批判的思考/]) {
+    const box = (await page.getByRole('tab', { name }).boundingBox())!
+    expect(box.x + box.width).toBeLessThanOrEqual(390)
+  }
+  // PDF と解説は上下に並ばず、タブで切り替える
+  await expect(page.locator('.pdf-scroll')).toBeHidden()
+  await page.getByRole('tab', { name: 'PDF' }).click()
+  await expect(page.locator('.pdf-page[data-page="1"]')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeHidden()
+  // PDF は画面の幅に収まる
+  await expect.poll(async () => (await page.locator('.pdf-page[data-page="1"]').boundingBox())!.width).toBeLessThanOrEqual(390)
+  await noHorizontalScroll()
+  // 解説の根拠チップを押すと PDF 側に切り替わる
+  await page.getByRole('tab', { name: '解説' }).click()
+  await page.locator('.reading-order').getByRole('button', { name: 'p.3' }).first().click()
+  await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport()
+})
+
 test('rejects a non-PDF file with a clear message', async ({ page }) => {
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles({ name: 'note.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') })

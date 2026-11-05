@@ -61,7 +61,9 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
     <div className={`qa ${open ? 'open' : ''}`}>
       <div className="qa-bar">
         <button type="button" className="qa-head" onClick={() => setOpen(!open)}>
-          <strong>根拠付きQ&amp;A</strong>
+          <strong>
+            <span className="wide-only">根拠付き</span>Q&amp;A
+          </strong>
           {messages.length > 0 && <span className="muted small">（{messages.length}件）</span>}
           {open && <span className="muted small qa-sub">どのStepからでも質問できます</span>}
           <span className="qa-toggle" aria-hidden="true">

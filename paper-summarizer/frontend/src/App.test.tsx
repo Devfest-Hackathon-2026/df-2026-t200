@@ -61,6 +61,46 @@ describe('App', () => {
     expect(viewer.jumpTo).not.toHaveBeenCalled()
   })
 
+  it('switches between the PDF and the explanation on narrow screens', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    const { container } = render(<App />)
+    await screen.findByText('問題A')
+    const workspace = container.querySelector('.workspace')!
+    expect(workspace).toHaveClass('show-explain')
+    expect(screen.getByRole('tab', { name: '解説' })).toHaveAttribute('aria-selected', 'true')
+    await userEvent.click(screen.getByRole('tab', { name: 'PDF' }))
+    expect(workspace).toHaveClass('show-pdf')
+    expect(screen.getByRole('tab', { name: 'PDF' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows the PDF before jumping to evidence on narrow screens', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList)
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    const { container } = render(<App />)
+    await screen.findByText('問題A')
+    viewer.jumpTo.mockClear()
+    await userEvent.click(screen.getByRole('button', { name: '初出 p.2' }))
+    expect(container.querySelector('.workspace')).toHaveClass('show-pdf')
+    await waitFor(() => expect(viewer.jumpTo).toHaveBeenCalledWith(2, undefined))
+  })
+
+  it('jumps right away on wide screens', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    const { container } = render(<App />)
+    await screen.findByText('問題A')
+    viewer.jumpTo.mockClear()
+    await userEvent.click(screen.getByRole('button', { name: '初出 p.2' }))
+    expect(viewer.jumpTo).toHaveBeenCalledWith(2, undefined)
+    expect(container.querySelector('.workspace')).toHaveClass('show-explain')
+  })
+
   it('shows the error and retry button for a failed analysis', async () => {
     window.location.hash = `#/paper/${paper.id}`
     vi.spyOn(api, 'health').mockResolvedValue(health)

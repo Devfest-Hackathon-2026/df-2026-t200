@@ -9,11 +9,20 @@ import { Upload } from './components/Upload'
 import { usePaper } from './hooks/usePaper'
 import { JumpContext } from './jump'
 
+const VIEWS = [
+  ['explain', '解説'],
+  ['pdf', 'PDF'],
+] as const
+
 const STEPS = [
   { n: 1, key: 'step1', title: '前提知識マップ', verb: '知る' },
   { n: 2, key: 'step2', title: 'コアロジック＆図表連動', verb: '追う' },
   { n: 3, key: 'step3', title: '批判的思考チェック', verb: '疑う' },
 ] as const
+
+/** これ以下の幅では PDF と解説を並べず、タブで切り替える（index.css の @media と同じ値） */
+const NARROW_QUERY = '(max-width: 900px)'
+const isNarrow = () => window.matchMedia?.(NARROW_QUERY).matches ?? false
 
 const paperIdFromHash = () => window.location.hash.match(/^#\/paper\/([0-9a-f]{16})$/)?.[1] ?? null
 
@@ -22,8 +31,14 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
   const [retryError, setRetryError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
   const [step, setStep] = useState(1)
+  const [view, setView] = useState<'pdf' | 'explain'>('explain')
   const viewer = useRef<PdfViewerHandle>(null)
-  const jump = useCallback((page: number, quote?: string) => viewer.current?.jumpTo(page, quote), [])
+  const jump = useCallback((page: number, quote?: string) => {
+    if (!isNarrow()) return viewer.current?.jumpTo(page, quote)
+    // 狭い画面では先に PDF を表示し、ページの大きさが決まってから移動する
+    setView('pdf')
+    requestAnimationFrame(() => viewer.current?.jumpTo(page, quote))
+  }, [])
   // Step を切り替えたら、前の Step で付けた PDF の強調を消す
   const selectStep = (n: number) => {
     if (n !== step) viewer.current?.clearHighlight()
@@ -62,7 +77,21 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
 
   return (
     <JumpContext.Provider value={jump}>
-      <div className="workspace">
+      <nav className="view-switch" role="tablist" aria-label="表示の切り替え">
+        {VIEWS.map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            className={view === v ? 'active' : ''}
+            onClick={() => setView(v)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div className={`workspace show-${view}`}>
         <div className="pane-left">
           <PdfViewer ref={viewer} url={api.pdfUrl(id)} />
         </div>
@@ -165,14 +194,15 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <a href="#/" className="brand">
-          PaperSummarizer <span className="muted">for Students</span>
+          PaperSummarizer <span className="muted brand-sub">for Students</span>
         </a>
         {health?.demo_mode && (
           <span className="badge demo" title="Gemini の認証情報が未設定のため、サンプルの解析結果を表示しています">
-            デモモード（サンプルデータ）
+            <span className="wide-only">デモモード（サンプルデータ）</span>
+            <span className="narrow-only">デモ</span>
           </span>
         )}
-        {health && !health.demo_mode && <span className="muted small">Gemini: {health.analysis_model}</span>}
+        {health && !health.demo_mode && <span className="muted small wide-only">Gemini: {health.analysis_model}</span>}
         <span className="spacer" />
         {id && (
           <a href="#/" className="btn">

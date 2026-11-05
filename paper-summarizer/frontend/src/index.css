@@ -136,10 +136,117 @@ h4 {
   flex-direction: column;
   background: var(--bg);
 }
+.view-switch,
+.narrow-only {
+  display: none;
+}
+
+/* 狭い画面: PDF と解説を上下に並べず、タブで切り替える（App.tsx の NARROW_QUERY と同じ幅） */
 @media (max-width: 900px) {
+  .wide-only,
+  .brand-sub {
+    display: none;
+  }
+  .narrow-only {
+    display: inline;
+  }
+  .topbar {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .brand {
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .topbar .btn {
+    white-space: nowrap;
+    flex: none;
+  }
+  .view-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 6px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .view-switch button {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 6px 0;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .view-switch button.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: #174ea6;
+  }
   .workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: 45vh 1fr;
+    display: flex;
+    flex-direction: column;
+  }
+  .workspace > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .workspace.show-pdf .pane-right,
+  .workspace.show-explain .pane-left {
+    display: none;
+  }
+  .pane-left {
+    border-right: none;
+  }
+  .pdf-scroll {
+    padding: 12px 8px;
+  }
+  .paper-title {
+    padding: 8px 12px 2px;
+  }
+  .tabs {
+    gap: 4px;
+    padding: 4px 12px 8px;
+  }
+  .tab {
+    min-width: 0;
+    padding: 4px 6px;
+  }
+  .tab-step {
+    font-size: 0.68rem;
+  }
+  .tab-title {
+    font-size: 0.74rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .step-scroll {
+    padding: 10px 12px 20px;
+  }
+  .qa-head {
+    padding: 8px 12px;
+  }
+  .qa-input {
+    padding: 8px 12px 10px;
+  }
+  .qa-sub {
+    display: none;
+  }
+  .upload-page {
+    padding: 24px 16px;
+  }
+  .hero h1 {
+    font-size: 1.35rem;
+  }
+  .history li button {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .history-meta {
+    justify-content: flex-start;
   }
 }
 
