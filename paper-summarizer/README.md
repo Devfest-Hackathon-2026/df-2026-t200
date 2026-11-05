@@ -34,6 +34,25 @@ cd backend && uv sync && uv run uvicorn app.main:app --port 8000 --reload
 cd frontend && npm install && npm run dev
 ```
 
+## 開発（lint / format / test）
+
+GitHub Actions（`.github/workflows/ci.yml`）で、PR と main への push ごとに次を実行します。PR を出す前にローカルでも同じコマンドを通してください。
+
+| 対象 | 内容 | コマンド |
+| --- | --- | --- |
+| backend | lint | `uv run ruff check .`（自動修正は `--fix`） |
+| backend | format | `uv run ruff format .`（CI は `--check`） |
+| backend | 単体 + 結合テスト（カバレッジ 80% 以上） | `uv run pytest --cov` |
+| frontend | format | `npm run format`（CI は `npm run format:check`） |
+| frontend | lint | `npm run lint` |
+| frontend | 型チェック + ビルド | `npm run build` |
+| frontend | 単体テスト（カバレッジ 80% 以上） | `npm test` / `npm run coverage` |
+| frontend | e2e（Playwright） | `npm run e2e`（初回のみ `npx playwright install chromium`） |
+
+- backend のテストはデモモードで動かし、Gemini は呼びません。Gemini 呼び出し部分はクライアントを差し替えてテストしています。
+- e2e はデモモードのバックエンド（:8000）と Vite（:5173）を自動で起動し、アップロードから Step 1〜3、Q&A までの操作を通します。テスト用の PDF は `backend/scripts/make_sample_pdf.py` が作ります。
+- PdfViewer（pdf.js と canvas を使う）は jsdom で動かないため、単体テストのカバレッジ対象から外し、e2e で確認しています。
+
 ## 構成
 
 ```

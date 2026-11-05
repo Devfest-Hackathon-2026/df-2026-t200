@@ -31,9 +31,7 @@ function layout(concepts: Concept[]) {
     ;(cols[d] ??= []).push(c)
   })
   const pos = new Map<string, { x: number; y: number }>()
-  cols.forEach((col, ci) =>
-    col.forEach((c, ri) => pos.set(c.id, { x: PAD + ci * (NODE_W + COL_GAP), y: PAD + ri * (NODE_H + ROW_GAP) })),
-  )
+  cols.forEach((col, ci) => col.forEach((c, ri) => pos.set(c.id, { x: PAD + ci * (NODE_W + COL_GAP), y: PAD + ri * (NODE_H + ROW_GAP) })))
   const rows = Math.max(1, ...cols.map((c) => c?.length ?? 0))
   return {
     pos,
@@ -139,16 +137,25 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
             <div className="row between">
               <strong>{sel.name}</strong>
               <span className="row gap">
-                <button type="button" className={`toggle ${knowledge[sel.id] === 'known' ? 'on' : ''}`} onClick={() => set(sel.id, 'known')}>
+                <button
+                  type="button"
+                  className={`toggle ${knowledge[sel.id] === 'known' ? 'on' : ''}`}
+                  onClick={() => set(sel.id, 'known')}
+                >
                   知っている
                 </button>
-                <button type="button" className={`toggle warn ${knowledge[sel.id] === 'unknown' ? 'on' : ''}`} onClick={() => set(sel.id, 'unknown')}>
+                <button
+                  type="button"
+                  className={`toggle warn ${knowledge[sel.id] === 'unknown' ? 'on' : ''}`}
+                  onClick={() => set(sel.id, 'unknown')}
+                >
                   知らない
                 </button>
               </span>
             </div>
             <p className="small">
-              <span className="muted">なぜ必要？</span> {sel.why_needed} <PageChip page={sel.first_page} label={sel.first_page ? `初出 p.${sel.first_page}` : undefined} />
+              <span className="muted">なぜ必要？</span> {sel.why_needed}{' '}
+              <PageChip page={sel.first_page} label={sel.first_page ? `初出 p.${sel.first_page}` : undefined} />
             </p>
             {knowledge[sel.id] === 'unknown' && <p className="explain">{sel.description}</p>}
           </div>

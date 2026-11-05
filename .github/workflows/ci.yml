@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: backend (lint / format / test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: paper-summarizer/backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: paper-summarizer/backend/uv.lock
+      - run: uv sync --locked
+      - name: Lint (ruff)
+        run: uv run ruff check --output-format=github .
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+      - name: Test + coverage (pytest, 80% 以上)
+        run: uv run pytest --cov --cov-report=term-missing
+
+  frontend:
+    name: frontend (lint / format / typecheck / test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: paper-summarizer/frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: paper-summarizer/frontend/package-lock.json
+      - run: npm ci
+      - name: Format check (prettier)
+        run: npm run format:check
+      - name: Lint (oxlint)
+        run: npm run lint
+      - name: Typecheck + build
+        run: npm run build
+      - name: Unit test + coverage (vitest)
+        run: npm run coverage
+
+  e2e:
+    name: e2e (playwright, demo mode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: paper-summarizer/frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: paper-summarizer/backend/uv.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: paper-summarizer/frontend/package-lock.json
+      - run: uv sync --locked
+        working-directory: paper-summarizer/backend
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: E2E (Gemini を呼ばないデモモード)
+        run: npm run e2e
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            paper-summarizer/frontend/playwright-report
+            paper-summarizer/frontend/test-results
+          retention-days: 7

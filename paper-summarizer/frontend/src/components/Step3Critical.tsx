@@ -4,9 +4,13 @@ import { EvidenceList } from '../jump'
 
 function OriginBadge({ origin }: { origin: Origin }) {
   return origin === 'paper' ? (
-    <span className="badge paper" title="論文自身が述べている内容です">論文の記述</span>
+    <span className="badge paper" title="論文自身が述べている内容です">
+      論文の記述
+    </span>
   ) : (
-    <span className="badge ai" title="AIによる推論です。論文の主張ではありません。自分で確かめてください">AIの指摘・要検証</span>
+    <span className="badge ai" title="AIによる推論です。論文の主張ではありません。自分で確かめてください">
+      AIの指摘・要検証
+    </span>
   )
 }
 
