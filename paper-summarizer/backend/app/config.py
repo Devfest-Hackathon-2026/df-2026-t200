@@ -34,3 +34,7 @@ MAX_TOTAL_CHARS = int(os.getenv("MAX_TOTAL_CHARS", "1000000"))
 
 # この秒数より長く更新のない queued / processing_* は、サーバーが途中で落ちたとみなして再実行を受け付ける。
 STALE_AFTER_SEC = int(os.getenv("STALE_AFTER_SEC", "600"))
+
+# /ask と /retry の論文ごとの回数制限（1分あたり）。/ask は毎回 PDF 全体を Gemini に送るので費用に直結する。
+ASK_RATE_PER_MIN = int(os.getenv("ASK_RATE_PER_MIN", "10"))
+RETRY_RATE_PER_MIN = int(os.getenv("RETRY_RATE_PER_MIN", "3"))

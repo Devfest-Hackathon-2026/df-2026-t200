@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 
 from . import config, errors, mock, store
 from .pdf_utils import TooManyPages, TooMuchText, extract_pages, normalize, verify_all
+from .ratelimit import RateLimiter
 from .schemas import AskRequest
 
 log = logging.getLogger("paper")
@@ -26,6 +27,8 @@ app = FastAPI(title="PaperSummarizer for Students")
 
 # 同時に走る解析ジョブ数を制限（Cloud Tasks の同時実行数制限に相当。API のレート制限対策）
 _job_slots = threading.BoundedSemaphore(2)
+_ask_limiter = RateLimiter(config.ASK_RATE_PER_MIN, 60)
+_retry_limiter = RateLimiter(config.RETRY_RATE_PER_MIN, 60)
 
 
 def _public(paper: dict[str, Any]) -> dict[str, Any]:
@@ -195,6 +198,8 @@ def get_pdf(paper_id: str) -> FileResponse:
 @app.post("/api/papers/{paper_id}/retry")
 def retry(paper_id: str) -> dict[str, Any]:
     _load_or_404(paper_id)
+    if not _retry_limiter.allow(paper_id):
+        raise HTTPException(429, "再実行の回数が多すぎます。1分ほど待ってからもう一度お試しください。")
     # 状態の確認と queued への変更を1回の操作で行い、二度押しで解析が2本走らないようにする
     if store.transition(paper_id, _retryable, status="queued", error=None) is None:
         raise HTTPException(409, "失敗した解析、または止まったままの解析のみ再実行できます")
@@ -205,6 +210,8 @@ def retry(paper_id: str) -> dict[str, Any]:
 @app.post("/api/papers/{paper_id}/ask")
 def ask(paper_id: str, req: AskRequest) -> dict[str, Any]:
     paper = _load_or_404(paper_id)
+    if not _ask_limiter.allow(paper_id):
+        raise HTTPException(429, "質問の回数が多すぎます。1分ほど待ってからもう一度質問してください。")
     pdf_bytes = store.pdf_path(paper_id).read_bytes()
     pages = extract_pages(pdf_bytes)
     try:

@@ -13,6 +13,7 @@ from make_sample_pdf import make_pdf
 
 from app import config, main, store
 from app.errors import EmptyResponseError
+from app.ratelimit import RateLimiter
 
 
 @pytest.fixture
@@ -304,3 +305,31 @@ def test_analysis_failure_before_first_step_marks_failed(sample_pdf):
 
 def test_analysis_of_missing_paper_does_nothing():
     main._run_analysis(store.new_id())  # 例外を出さない
+
+
+def test_ask_is_rate_limited_per_paper(client, sample_pdf, monkeypatch):
+    monkeypatch.setattr(main, "_ask_limiter", RateLimiter(2, 60))
+    pid = _upload(client, sample_pdf).json()["id"]
+    _wait_done(client, pid)
+    codes = [client.post(f"/api/papers/{pid}/ask", json={"question": "q"}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+    res = client.post(f"/api/papers/{pid}/ask", json={"question": "q"})
+    assert "質問" in res.json()["detail"]
+    assert len(client.get(f"/api/papers/{pid}").json()["messages"]) == 4  # 弾いた質問は保存しない
+
+    other = _upload(client, make_pdf(4)).json()["id"]
+    _wait_done(client, other)
+    assert client.post(f"/api/papers/{other}/ask", json={"question": "q"}).status_code == 200  # 論文ごとに数える
+
+
+def test_retry_is_rate_limited_per_paper(client, sample_pdf, monkeypatch):
+    started = []
+    monkeypatch.setattr(main, "_start", started.append)
+    monkeypatch.setattr(main, "_retry_limiter", RateLimiter(1, 60))
+    pid = _stuck_paper(sample_pdf, "failed")
+    assert client.post(f"/api/papers/{pid}/retry").status_code == 200
+    store.update(pid, status="failed")
+    res = client.post(f"/api/papers/{pid}/retry")
+    assert res.status_code == 429
+    assert "再実行" in res.json()["detail"]
+    assert started == [pid]
