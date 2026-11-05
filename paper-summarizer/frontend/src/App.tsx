@@ -196,45 +196,37 @@ export default function App() {
   }, [])
 
   return (
-    <>
-      <div className="app">
-        <header className="topbar">
-          <a href="#/" className="brand">
-            <span className="brand-name">PaperSummarizer</span> <span className="muted brand-sub">for Students</span>
-          </a>
-          {health?.demo_mode && (
-            <span className="tag demo" title="Gemini の認証情報が設定されていないので、サンプルの解析結果を表示しています">
-              <span className="wide-only">デモモード（サンプルデータ）</span>
-              <span className="narrow-only">デモ</span>
-            </span>
-          )}
-          {health && !health.demo_mode && <span className="muted small wide-only">Gemini: {health.analysis_model}</span>}
-          <span className="spacer" />
-          {id && (
-            <a href="#/" className="btn">
-              別の論文を開く
-            </a>
-          )}
-        </header>
-        {health === null && (
-          <div className="error banner">
-            バックエンド（http://localhost:8000）に接続できません。バックエンドを起動してから、このページを再読み込みしてください。
-          </div>
+    <div className="app">
+      <header className="topbar">
+        <a href="#/" className="brand">
+          <span className="brand-name">PaperSummarizer</span> <span className="muted brand-sub">for Students</span>
+        </a>
+        {health?.demo_mode && (
+          <span className="tag demo" title="Gemini の認証情報が設定されていないので、サンプルの解析結果を表示しています">
+            <span className="wide-only">デモモード（サンプルデータ）</span>
+            <span className="narrow-only">デモ</span>
+          </span>
         )}
-        <ErrorBoundary key={id ?? 'upload'} title="画面を表示できませんでした">
-          {id ? (
-            <PaperView key={id} id={id} health={health ?? null} />
-          ) : (
-            <Upload health={health ?? null} onOpen={(pid) => (window.location.hash = `#/paper/${pid}`)} />
-          )}
-        </ErrorBoundary>
-      </div>
-      <div className="tray" aria-hidden="true">
-        <span className="marker blue" />
-        <span className="marker black" />
-        <span className="marker red" />
-        <span className="marker green" />
-      </div>
-    </>
+        {health && !health.demo_mode && <span className="muted small wide-only">Gemini: {health.analysis_model}</span>}
+        <span className="spacer" />
+        {id && (
+          <a href="#/" className="btn">
+            別の論文を開く
+          </a>
+        )}
+      </header>
+      {health === null && (
+        <div className="error banner">
+          バックエンド（http://localhost:8000）に接続できません。バックエンドを起動してから、このページを再読み込みしてください。
+        </div>
+      )}
+      <ErrorBoundary key={id ?? 'upload'} title="画面を表示できませんでした">
+        {id ? (
+          <PaperView key={id} id={id} health={health ?? null} />
+        ) : (
+          <Upload health={health ?? null} onOpen={(pid) => (window.location.hash = `#/paper/${pid}`)} />
+        )}
+      </ErrorBoundary>
+    </div>
   )
 }
