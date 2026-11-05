@@ -22,6 +22,9 @@ export type ConceptLayout = {
   vertical: boolean
 }
 
+/** 概念が前提にしている、実在する別の概念。自分自身を前提に挙げていても無視する */
+const prereqs = (c: Concept, exists: (id: string) => boolean) => c.depends_on.filter((d) => d !== c.id && exists(d))
+
 /** 依存の深さ（前提が何段あるか）。循環は打ち切る */
 function depths(concepts: Concept[]): Map<string, number> {
   const byId = new Map(concepts.map((c) => [c.id, c]))
@@ -31,7 +34,7 @@ function depths(concepts: Concept[]): Map<string, number> {
     if (stack.has(id)) return 0
     stack.add(id)
     const c = byId.get(id)
-    const d = c ? Math.max(0, ...c.depends_on.filter((x) => byId.has(x)).map((x) => visit(x, stack) + 1)) : 0
+    const d = c ? Math.max(0, ...prereqs(c, (x) => byId.has(x)).map((x) => visit(x, stack) + 1)) : 0
     stack.delete(id)
     depth.set(id, d)
     return d
@@ -46,7 +49,7 @@ function depths(concepts: Concept[]): Map<string, number> {
  */
 export function orderLayers(layers: Concept[][], concepts: Concept[]): Concept[][] {
   const ids = new Set(concepts.map((c) => c.id))
-  const preds = new Map(concepts.map((c) => [c.id, c.depends_on.filter((d) => ids.has(d))]))
+  const preds = new Map(concepts.map((c) => [c.id, prereqs(c, (d) => ids.has(d))]))
   const succs = new Map<string, string[]>(concepts.map((c) => [c.id, []]))
   concepts.forEach((c) => preds.get(c.id)!.forEach((d) => succs.get(d)!.push(c.id)))
   const result = layers.map((l) => [...(l ?? [])])
@@ -145,7 +148,7 @@ export function edgePaths(concepts: Concept[], layout: ConceptLayout, inset = 3)
   const rx = nodeW / 2 - inset
   const ry = nodeH / 2 - inset
   const center = (id: string) => ({ x: pos.get(id)!.x + nodeW / 2, y: pos.get(id)!.y + nodeH / 2 })
-  const pairs = concepts.flatMap((c) => c.depends_on.filter((d) => pos.has(d) && pos.has(c.id)).map((d) => ({ from: d, to: c.id })))
+  const pairs = concepts.flatMap((c) => (pos.has(c.id) ? prereqs(c, (d) => pos.has(d)).map((d) => ({ from: d, to: c.id })) : []))
   // 相手の位置（横並びなら y、縦並びなら x）で並べ、-1〜1 の位置を割り当てる
   const along = (p: Point) => (vertical ? p.x : p.y)
   const slots = (key: 'from' | 'to') => {

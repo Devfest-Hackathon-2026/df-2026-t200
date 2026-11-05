@@ -93,6 +93,14 @@ describe('edgePaths', () => {
     expect(new Set(ends).size).toBe(2)
   })
 
+  it('ignores a concept that lists itself as a prerequisite', () => {
+    const concepts = [concept('a', ['a']), concept('b', ['a', 'b'])]
+    const layout = layoutConcepts(concepts)
+    expect(layout.pos.get('a')!.x).toBe(PAD)
+    expect(layout.pos.get('b')!.x).toBe(PAD + NODE_W + COL_GAP)
+    expect(edgePaths(concepts, layout).map((e) => `${e.from}-${e.to}`)).toEqual(['a-b'])
+  })
+
   it('runs downward on narrow screens', () => {
     const concepts = [concept('a'), concept('b', ['a'])]
     const [e] = edgePaths(concepts, layoutConcepts(concepts, true))
