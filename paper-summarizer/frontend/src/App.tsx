@@ -83,16 +83,16 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
         className="view-switch"
         label="表示の切り替え"
         idPrefix="view"
-        panelId={`view-panel-${view}`}
+        panelId={(v) => `view-panel-${v}`}
         items={VIEWS}
         selected={view}
         onSelect={setView}
       />
       <div className={`workspace show-${view}`}>
-        <div className="pane-left" id="view-panel-pdf" role="region" aria-label="論文のPDF">
+        <div className="pane-left" id="view-panel-pdf" role="tabpanel" aria-labelledby="view-tab-pdf">
           <PdfViewer ref={viewer} url={api.pdfUrl(id)} />
         </div>
-        <div className="pane-right" id="view-panel-explain" role="region" aria-label="解説">
+        <div className="pane-right" id="view-panel-explain" role="tabpanel" aria-labelledby="view-tab-explain">
           <div className="paper-title">
             <h1>{r.step1?.title ?? paper.filename}</h1>
             <span className="muted small">

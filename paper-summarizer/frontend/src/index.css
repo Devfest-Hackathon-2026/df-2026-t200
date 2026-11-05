@@ -189,6 +189,9 @@ h3 {
     flex: none;
   }
   .view-switch {
+    display: block;
+  }
+  .view-switch .tablist {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 4px;
@@ -230,7 +233,7 @@ h3 {
   .paper-title {
     padding: 8px 12px 2px;
   }
-  .tabs {
+  .pane-right .tabs .tablist {
     gap: 4px;
     padding: 4px 12px 8px;
   }
@@ -528,7 +531,7 @@ h3 {
   font-size: 1rem;
   margin: 0;
 }
-.tabs {
+.tabs .tablist {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;

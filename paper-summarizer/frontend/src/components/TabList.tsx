@@ -4,7 +4,8 @@ type Item<T> = { value: T; label: ReactNode; className?: string }
 
 /**
  * WAI-ARIA の tablist。選択中のタブだけが Tab キーで止まり、矢印キー・Home・End で移動する（移動と同時に選択する）。
- * タブの id は `${idPrefix}-tab-${value}`、操作対象のパネルの id は panelId。
+ * タブの id は `${idPrefix}-tab-${value}`。panelId は全タブ共通のパネルの id か、タブごとのパネルの id を返す関数。
+ * nav は目印として外側に置き、role="tablist" は内側の div に付ける（nav の役割を上書きしないため）。
  */
 export function TabList<T extends string | number>({
   items,
@@ -20,7 +21,7 @@ export function TabList<T extends string | number>({
   onSelect: (value: T) => void
   label: string
   idPrefix: string
-  panelId: string
+  panelId: string | ((value: T) => string)
   className?: string
 }) {
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
@@ -36,25 +37,27 @@ export function TabList<T extends string | number>({
   }
 
   return (
-    <nav className={className} role="tablist" aria-label={label} onKeyDown={onKeyDown}>
-      {items.map((it) => {
-        const active = it.value === selected
-        return (
-          <button
-            key={it.value}
-            id={`${idPrefix}-tab-${it.value}`}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            aria-controls={panelId}
-            tabIndex={active ? 0 : -1}
-            className={`${it.className ?? ''} ${active ? 'active' : ''}`.trim()}
-            onClick={() => onSelect(it.value)}
-          >
-            {it.label}
-          </button>
-        )
-      })}
+    <nav className={className} aria-label={label}>
+      <div className="tablist" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+        {items.map((it) => {
+          const active = it.value === selected
+          return (
+            <button
+              key={it.value}
+              id={`${idPrefix}-tab-${it.value}`}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-controls={typeof panelId === 'string' ? panelId : panelId(it.value)}
+              tabIndex={active ? 0 : -1}
+              className={`${it.className ?? ''} ${active ? 'active' : ''}`.trim()}
+              onClick={() => onSelect(it.value)}
+            >
+              {it.label}
+            </button>
+          )
+        })}
+      </div>
     </nav>
   )
 }

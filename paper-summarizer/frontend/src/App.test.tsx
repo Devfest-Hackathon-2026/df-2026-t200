@@ -97,6 +97,22 @@ describe('App', () => {
     const workspace = container.querySelector('.workspace')!
     expect(workspace).toHaveClass('show-explain')
     expect(screen.getByRole('tab', { name: '解説' })).toHaveAttribute('aria-selected', 'true')
+    // 各タブは自分のパネルを指し、パネルはタブで名前が付く
+    for (const [name, panelName] of [
+      ['解説', '解説'],
+      ['PDF', 'PDF'],
+    ]) {
+      const tab = screen.getByRole('tab', { name })
+      const panel = document.getElementById(tab.getAttribute('aria-controls')!)!
+      expect(panel).toHaveAttribute('role', 'tabpanel')
+      expect(panel).toHaveAttribute('aria-labelledby', tab.id)
+      expect(panel).toHaveAccessibleName(panelName)
+    }
+    // tablist は nav ではなく、nav の中の div に付ける
+    for (const list of screen.getAllByRole('tablist')) {
+      expect(list.tagName).toBe('DIV')
+      expect(list.parentElement!.tagName).toBe('NAV')
+    }
     await userEvent.click(screen.getByRole('tab', { name: 'PDF' }))
     expect(workspace).toHaveClass('show-pdf')
     expect(screen.getByRole('tab', { name: 'PDF' })).toHaveAttribute('aria-selected', 'true')
