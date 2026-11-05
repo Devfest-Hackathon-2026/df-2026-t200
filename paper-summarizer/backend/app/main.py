@@ -16,7 +16,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from . import config, mock, store
-from .pdf_utils import extract_pages, normalize, verify_all
+from .pdf_utils import TooManyPages, TooMuchText, extract_pages, normalize, verify_all
 from .schemas import AskRequest
 
 log = logging.getLogger("paper")
@@ -137,21 +137,25 @@ def list_papers() -> list[dict[str, Any]]:
     return store.list_papers()
 
 
+# PDF の解析・ハッシュ計算・ファイル書き込みはすべて同期処理なので、普通の def にして
+# FastAPI のスレッドプールで実行させる（async def だと処理中はほかのリクエストがすべて止まる）。
 @app.post("/api/papers")
-async def upload(file: UploadFile = File(...), level: str = Form("undergrad")) -> dict[str, Any]:
+def upload(file: UploadFile = File(...), level: str = Form("undergrad")) -> dict[str, Any]:
     if level not in ("undergrad", "grad"):
         raise HTTPException(400, "level は undergrad か grad を指定してください")
-    data = await file.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
+    data = file.file.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
     if len(data) > config.MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(413, f"ファイルサイズの上限は {config.MAX_UPLOAD_MB}MB です")
     if not data.startswith(b"%PDF"):
         raise HTTPException(400, "PDF ファイルをアップロードしてください")
     try:
-        pages = extract_pages(data)
+        pages = extract_pages(data, max_pages=config.MAX_PAGES, max_chars=config.MAX_TOTAL_CHARS)
+    except TooManyPages as e:
+        raise HTTPException(413, f"ページ数の上限は {config.MAX_PAGES} ページです（このPDFは {e.count} ページ）") from e
+    except TooMuchText as e:
+        raise HTTPException(413, "PDF のテキスト量が多すぎます。論文本体だけの PDF にしてください") from e
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, "PDF を読み込めませんでした（破損または暗号化されている可能性があります）") from e
-    if len(pages) > config.MAX_PAGES:
-        raise HTTPException(413, f"ページ数の上限は {config.MAX_PAGES} ページです（このPDFは {len(pages)} ページ）")
     if sum(len(p.strip()) for p in pages) < 200:
         raise HTTPException(400, "テキストを含む PDF のみ対応しています（スキャン画像のみの PDF は未対応）")
 

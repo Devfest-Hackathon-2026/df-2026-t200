@@ -1,4 +1,24 @@
-from app.pdf_utils import extract_pages, normalize, verify_all, verify_evidence
+import pymupdf
+import pytest
+
+from app.pdf_utils import TooManyPages, TooMuchText, extract_pages, normalize, verify_all, verify_evidence
+
+
+def test_extract_pages_rejects_page_count_before_reading_text(sample_pdf, monkeypatch):
+    calls = []
+    monkeypatch.setattr(pymupdf.Page, "get_text", lambda *_a, **_k: calls.append(1) or "")
+    with pytest.raises(TooManyPages) as e:
+        extract_pages(sample_pdf, max_pages=2)
+    assert e.value.count == 3
+    assert calls == []
+
+
+def test_extract_pages_stops_when_text_exceeds_limit(sample_pdf, monkeypatch):
+    calls = []
+    monkeypatch.setattr(pymupdf.Page, "get_text", lambda *_a, **_k: calls.append(1) or "x" * 100)
+    with pytest.raises(TooMuchText):
+        extract_pages(sample_pdf, max_chars=150)
+    assert len(calls) == 2  # 上限を超えた時点で抽出をやめる
 
 
 def test_extract_pages_returns_text_per_page(sample_pdf):

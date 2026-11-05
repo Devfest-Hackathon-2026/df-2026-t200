@@ -1,5 +1,6 @@
 """API の結合テスト（デモモード。解析ジョブはバックグラウンドスレッドで実際に走る）。"""
 
+import inspect
 import json
 import threading
 import time
@@ -119,6 +120,29 @@ def test_upload_rejects_too_many_pages(client, monkeypatch):
     monkeypatch.setattr(config, "MAX_PAGES", 2)
     res = _upload(client, make_pdf(3))
     assert res.status_code == 413
+
+
+def test_upload_checks_page_count_before_extracting_text(client, monkeypatch):
+    def no_extract(*_a, **_k):
+        raise AssertionError("本文を抽出する前にページ数で弾くこと")
+
+    monkeypatch.setattr(config, "MAX_PAGES", 2)
+    monkeypatch.setattr(pymupdf.Page, "get_text", no_extract)
+    res = _upload(client, make_pdf(3))
+    assert res.status_code == 413
+    assert "3 ページ" in res.json()["detail"]
+
+
+def test_upload_rejects_too_much_text(client, monkeypatch):
+    monkeypatch.setattr(config, "MAX_TOTAL_CHARS", 500)
+    res = _upload(client, make_pdf(3))
+    assert res.status_code == 413
+    assert "テキスト" in res.json()["detail"]
+
+
+def test_upload_is_sync_so_it_runs_in_threadpool():
+    # async def のまま同期処理をすると、処理中はほかのリクエストがすべて止まる
+    assert not inspect.iscoroutinefunction(main.upload)
 
 
 def test_upload_rejects_too_large(client, monkeypatch):

@@ -12,9 +12,34 @@ from typing import Any
 import pymupdf
 
 
-def extract_pages(pdf_bytes: bytes) -> list[str]:
+class TooManyPages(ValueError):
+    def __init__(self, count: int):
+        super().__init__(f"too many pages: {count}")
+        self.count = count
+
+
+class TooMuchText(ValueError):
+    pass
+
+
+def extract_pages(pdf_bytes: bytes, max_pages: int | None = None, max_chars: int | None = None) -> list[str]:
+    """ページごとの本文を返す。
+
+    max_pages を超えるページ数なら、本文を抽出する前に TooManyPages を出す（重い PDF で CPU とメモリを使い切らない）。
+    抽出した文字数の合計が max_chars を超えたら、その時点で TooMuchText を出す。
+    """
     with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
-        return [page.get_text() for page in doc]
+        if max_pages is not None and len(doc) > max_pages:
+            raise TooManyPages(len(doc))
+        pages: list[str] = []
+        total = 0
+        for page in doc:
+            text = page.get_text()
+            total += len(text)
+            if max_chars is not None and total > max_chars:
+                raise TooMuchText(f"text exceeds {max_chars} chars")
+            pages.append(text)
+        return pages
 
 
 # 引用として認める最低の長さ。「the model」のような短い句はほぼどのページにもあるので根拠にならない。
