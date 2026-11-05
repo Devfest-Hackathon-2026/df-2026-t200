@@ -125,8 +125,8 @@ async def upload(file: UploadFile = File(...), level: str = Form("undergrad")) -
         raise HTTPException(400, "PDF ファイルをアップロードしてください")
     try:
         pages = extract_pages(data)
-    except Exception:  # noqa: BLE001
-        raise HTTPException(400, "PDF を読み込めませんでした（破損または暗号化されている可能性があります）")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, "PDF を読み込めませんでした（破損または暗号化されている可能性があります）") from e
     if len(pages) > config.MAX_PAGES:
         raise HTTPException(413, f"ページ数の上限は {config.MAX_PAGES} ページです（このPDFは {len(pages)} ページ）")
     if sum(len(p.strip()) for p in pages) < 200:
@@ -191,11 +191,13 @@ def ask(paper_id: str, req: AskRequest) -> dict[str, Any]:
             out = _gemini().ask(pdf_bytes, paper["level"], req.question, paper.get("messages", []), req.current_step)
     except Exception as e:  # noqa: BLE001
         log.exception("ask failed paper=%s", paper_id)
-        raise HTTPException(502, _error_message(e))
+        raise HTTPException(502, _error_message(e)) from e
     out = verify_all(out, [normalize(p) for p in pages])
     paper = store.load(paper_id) or paper
     messages = paper.get("messages", [])
     messages.append({"role": "user", "text": req.question, "created_at": store.now()})
-    messages.append({"role": "assistant", "text": out["answer"], **{k: out[k] for k in ("source", "evidence", "confidence")}, "created_at": store.now()})
+    messages.append(
+        {"role": "assistant", "text": out["answer"], **{k: out[k] for k in ("source", "evidence", "confidence")}, "created_at": store.now()}
+    )
     store.update(paper_id, messages=messages)
     return {"messages": messages}

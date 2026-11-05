@@ -15,7 +15,13 @@
   --danger-soft: #fce8e6;
   --hl: rgba(255, 196, 0, 0.45);
   --radius: 10px;
-  font-family: 'Hiragino Sans', 'Noto Sans JP', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    'Hiragino Sans',
+    'Noto Sans JP',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
   color: var(--text);
   background: var(--bg);
   line-height: 1.65;

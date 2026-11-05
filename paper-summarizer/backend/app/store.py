@@ -6,7 +6,7 @@ papers/{id}.json に1論文分の状態・結果・会話履歴をまとめて�
 import json
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .config import PAPER_DIR, UPLOAD_DIR
@@ -15,7 +15,7 @@ _lock = threading.Lock()
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def new_id() -> str:

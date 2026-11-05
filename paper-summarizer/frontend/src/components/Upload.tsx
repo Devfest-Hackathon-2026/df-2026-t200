@@ -43,7 +43,8 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
       <div className="hero">
         <h1>英語論文を、3つのステップで自分のものに。</h1>
         <p className="muted">
-          前提知識マップで<strong>知る</strong> → 図表と連動したウォークスルーで<strong>追う</strong> → 批判的思考チェックで<strong>疑う</strong>。
+          前提知識マップで<strong>知る</strong> → 図表と連動したウォークスルーで<strong>追う</strong> → 批判的思考チェックで
+          <strong>疑う</strong>。
           <br />
           すべての解説に根拠ページが付き、クリックで原文に戻れます。
         </p>

@@ -15,3 +15,12 @@ node_modules/
 frontend/dist/
 
 .DS_Store
+
+# e2e テストの一時データ
+backend/.e2e-data/
+
+# テスト・lint のキャッシュ
+.coverage
+coverage.xml
+.pytest_cache/
+.ruff_cache/

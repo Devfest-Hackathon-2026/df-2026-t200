@@ -176,10 +176,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function P
   return (
     <div className="pdf-scroll" ref={scrollRef}>
       {!doc && <div className="muted pad">PDF を読み込み中…</div>}
-      {doc &&
-        Array.from({ length: doc.numPages }, (_, i) => (
-          <PageView key={i + 1} doc={doc} num={i + 1} width={width} target={target} />
-        ))}
+      {doc && Array.from({ length: doc.numPages }, (_, i) => <PageView key={i + 1} doc={doc} num={i + 1} width={width} target={target} />)}
     </div>
   )
 })
