@@ -24,13 +24,13 @@ export default defineConfig({
       cwd: '../backend',
       url: 'http://localhost:8000/api/health',
       env: { DEMO_MODE: '1', DATA_DIR: E2E_DATA_DIR },
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false, // 起動中の dev サーバー（デモモードでない可能性）に接続しない
       timeout: 120_000,
     },
     {
       command: 'npx vite --port 5173 --strictPort',
       url: 'http://localhost:5173',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false, // 起動中の dev サーバー（デモモードでない可能性）に接続しない
       timeout: 120_000,
     },
   ],
