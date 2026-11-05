@@ -12,12 +12,13 @@ const STATUS_LABEL: Record<string, string> = {
 
 const LEVEL_LABEL: Record<Level, string> = { undergrad: '学部生向け', grad: '大学院生向け' }
 
-/** 一覧に出す日付と時刻（ブラウザの時刻で「11月5日 18:30」）。同じ日に何度も開いても見分けられるよう時刻も出す。読めない値は出さない */
+/** 一覧に出す日付と時刻（ブラウザの時刻で「11月5日 18:30」、今年でなければ年も付ける）。同じ日に何度も開いても見分けられるよう時刻も出す。読めない値は出さない */
 function formatDate(iso: string): string {
   const d = new Date(iso)
   if (!iso || Number.isNaN(d.getTime())) return ''
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`
+  const year = d.getFullYear() === new Date().getFullYear() ? '' : `${d.getFullYear()}年`
+  return `${year}${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 /** 解析中の Step（1〜3）。解析中でなければ null */
@@ -38,7 +39,7 @@ function PaperCard({ paper, onOpen }: { paper: PaperSummary; onOpen: (id: string
       <span className="paper-card-title">{paper.title || paper.filename}</span>
       <span className="paper-card-meta">
         {date && <span>{date}</span>}
-        {paper.level && <span>{LEVEL_LABEL[paper.level]}</span>}
+        {paper.level && LEVEL_LABEL[paper.level] && <span>{LEVEL_LABEL[paper.level]}</span>}
       </span>
       <span className="paper-card-foot">
         <span className={`status ${paper.status}`}>{STATUS_LABEL[paper.status] ?? paper.status}</span>
@@ -155,7 +156,8 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
           </strong>
           <span className="muted small">テキストを含むPDF・{health?.max_upload_mb ?? 20}MBまで</span>
           {/* クリックは受け口の onClick に伝わってファイル選択を開く */}
-          <button type="button" className="drop-cta" disabled={busy}>
+          {/* 処理中も disabled にはしない（無効なボタンはドロップを受けず、PDF がタブで開いてしまうため）。二重の選択は openPicker が防ぐ */}
+          <button type="button" className="drop-cta" aria-disabled={busy}>
             PDFを選択
           </button>
         </div>

@@ -487,17 +487,22 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 760px) 340px;
+  /* 行の高さを画面に合わせ、はみ出す分は各列の中でスクロールする */
+  grid-template-rows: minmax(0, 1fr);
   justify-content: center;
-  align-items: start;
   gap: 64px;
   padding: 48px 64px 0 72px;
 }
 .upload-main {
   min-width: 0;
+  min-height: 0;
+  /* 縦に短い画面でも、エラーの表示まで列の中でスクロールして見られる */
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 22px;
-  padding-bottom: 28px;
+  /* フォーカスの枠が切れないよう、内側に少し余白を取る */
+  padding: 4px 6px 28px;
 }
 .hero h1 {
   font-size: 2.4rem;
@@ -597,13 +602,12 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 .drop-cta:hover {
   background: var(--blue-dark);
 }
-.drop-cta:disabled {
+.drop-cta[aria-disabled='true'] {
   cursor: progress;
 }
 /* これまでの論文: 1件ずつマグネットで留めたカード。長くなったら列の中でスクロールする */
 .history {
   min-height: 0;
-  max-height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -1676,8 +1680,11 @@ body.pane-resizing .workspace > :not(.pane-divider) {
     overflow: auto;
     padding: 12px;
   }
+  .upload-main {
+    overflow: visible;
+    padding: 0 0 12px;
+  }
   .history {
-    max-height: none;
     margin-top: 12px;
   }
   .history ul {

@@ -90,6 +90,16 @@ describe('Upload', () => {
     expect(card.querySelector('.magnet')).toHaveClass('yellow')
   })
 
+  it('adds the year only for papers from an earlier year and hides unknown levels', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue([
+      { id: 'o', filename: 'old.pdf', title: 'Old', status: 'done', created_at: '2020-03-02T09:30:00+00:00', level: 'phd' as never },
+    ])
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    const card = await screen.findByRole('button', { name: /Old/ })
+    expect(card).toHaveTextContent(/2020年3月2日/)
+    expect(card.querySelectorAll('.paper-card-meta > span')).toHaveLength(1)
+  })
+
   it('puts the drop zone hint and a real button in the drop zone', () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     render(<Upload health={health} onOpen={vi.fn()} />)
