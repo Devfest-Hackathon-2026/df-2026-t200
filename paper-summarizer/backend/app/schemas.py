@@ -5,8 +5,9 @@
 """
 
 from enum import Enum
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Evidence(BaseModel):
@@ -150,3 +151,25 @@ class Answer(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     current_step: int | None = None
+
+
+# ---------- 保存する論文の記録 ----------
+
+
+class Paper(BaseModel):
+    """papers/{id}.json の中身（Firestore のドキュメントに相当）。API の応答はこれまでどおり dict のまま返す。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    filename: str
+    sha256: str = ""
+    level: str = "undergrad"
+    page_count: int = 0
+    status: str = "queued"
+    error: str | None = None
+    demo: bool = False
+    results: dict[str, Any] = Field(default_factory=dict)
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str | None = None

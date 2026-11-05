@@ -1,5 +1,7 @@
 """PaperSummarizer for Students - ローカル API サーバー。
 
+HTTP の入出力だけを扱い、解析と Q&A の組み立ては services.PaperService に任せる。
+
 本番構成との対応:
   ローカルファイル保存      -> Cloud Storage（PDF）/ Firestore（状態・結果・会話）
   バックグラウンドスレッド   -> Cloud Tasks + Cloud Run Worker
@@ -8,23 +10,28 @@
 
 import hashlib
 import logging
-import threading
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
 
-from . import config, mock, store
-from .pdf_utils import extract_pages, normalize, verify_all
+from . import config, store
+from .pdf_utils import TooManyPages, TooMuchText, extract_pages
 from .schemas import AskRequest
+from .services import AskFailed, PaperService
 
 log = logging.getLogger("paper")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 app = FastAPI(title="PaperSummarizer for Students")
+app.state.service = PaperService()
 
-# 同時に走る解析ジョブ数を制限（Cloud Tasks の同時実行数制限に相当。API のレート制限対策）
-_job_slots = threading.BoundedSemaphore(2)
+
+def get_service(request: Request) -> PaperService:
+    return request.app.state.service
+
+
+Service = Annotated[PaperService, Depends(get_service)]
 
 
 def _public(paper: dict[str, Any]) -> dict[str, Any]:
@@ -38,63 +45,6 @@ def _load_or_404(paper_id: str) -> dict[str, Any]:
     if paper is None:
         raise HTTPException(404, "論文が見つかりません")
     return paper
-
-
-def _gemini():
-    from . import gemini  # 認証情報がないデモモードでは読み込まない
-
-    return gemini
-
-
-def _error_message(e: Exception) -> str:
-    text = str(e)
-    if "API key" in text or "PERMISSION_DENIED" in text or "401" in text or "403" in text:
-        return "Gemini の認証に失敗しました。.env の GEMINI_API_KEY または Vertex AI の設定を確認してください。"
-    if "429" in text or "RESOURCE_EXHAUSTED" in text:
-        return "Gemini のレート制限に達しました。少し時間をおいて再実行してください。"
-    if "404" in text and "model" in text.lower():
-        return f"モデルが見つかりません。.env の ANALYSIS_MODEL / QA_MODEL を確認してください（現在: {config.ANALYSIS_MODEL}）。"
-    return f"解析中にエラーが発生しました: {text[:300]}"
-
-
-def _run_analysis(paper_id: str) -> None:
-    """Step 1 → 2 → 3 を順に生成し、終わったものから保存する（画面は届いた順に表示）。"""
-    with _job_slots:
-        paper = store.load(paper_id)
-        assert paper is not None
-        pdf_bytes = store.pdf_path(paper_id).read_bytes()
-        pages = extract_pages(pdf_bytes)
-        norm_pages = [normalize(p) for p in pages]
-        level = paper["level"]
-        results: dict[str, Any] = paper.get("results", {})
-        try:
-            for step in (1, 2, 3):
-                key = f"step{step}"
-                if results.get(key):
-                    continue
-                store.update(paper_id, status=f"processing_{key}")
-                log.info("paper=%s %s start (demo=%s)", paper_id, key, config.DEMO_MODE)
-                if config.DEMO_MODE:
-                    out = {1: lambda: mock.step1(pages, paper["filename"]), 2: lambda: mock.step2(pages), 3: lambda: mock.step3(pages)}[step]()
-                else:
-                    g = _gemini()
-                    if step == 1:
-                        out = g.step1(pdf_bytes, level)
-                    elif step == 2:
-                        out = g.step2(pdf_bytes, level, results["step1"])
-                    else:
-                        out = g.step3(pdf_bytes, level, results["step1"])
-                results[key] = verify_all(out, norm_pages)
-                store.update(paper_id, results=results)
-                log.info("paper=%s %s done", paper_id, key)
-            store.update(paper_id, status="done", error=None)
-        except Exception as e:  # noqa: BLE001
-            log.exception("analysis failed paper=%s", paper_id)
-            store.update(paper_id, status="failed", error=_error_message(e))
-
-
-def _start(paper_id: str) -> None:
-    threading.Thread(target=_run_analysis, args=(paper_id,), daemon=True).start()
 
 
 @app.get("/api/health")
@@ -114,48 +64,36 @@ def list_papers() -> list[dict[str, Any]]:
     return store.list_papers()
 
 
+# PDF の解析・ハッシュ計算・ファイル書き込みはすべて同期処理なので、普通の def にして
+# FastAPI のスレッドプールで実行させる（async def だと処理中はほかのリクエストがすべて止まる）。
 @app.post("/api/papers")
-async def upload(file: UploadFile = File(...), level: str = Form("undergrad")) -> dict[str, Any]:
+def upload(service: Service, file: UploadFile = File(...), level: str = Form("undergrad")) -> dict[str, Any]:
     if level not in ("undergrad", "grad"):
         raise HTTPException(400, "level は undergrad か grad を指定してください")
-    data = await file.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
+    data = file.file.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
     if len(data) > config.MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(413, f"ファイルサイズの上限は {config.MAX_UPLOAD_MB}MB です")
     if not data.startswith(b"%PDF"):
         raise HTTPException(400, "PDF ファイルをアップロードしてください")
     try:
-        pages = extract_pages(data)
+        pages = extract_pages(data, max_pages=config.MAX_PAGES, max_chars=config.MAX_TOTAL_CHARS)
+    except TooManyPages as e:
+        raise HTTPException(413, f"ページ数の上限は {config.MAX_PAGES} ページです（このPDFは {e.count} ページ）") from e
+    except TooMuchText as e:
+        raise HTTPException(413, "PDF のテキスト量が多すぎます。論文本体だけの PDF にしてください") from e
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, "PDF を読み込めませんでした（破損または暗号化されている可能性があります）") from e
-    if len(pages) > config.MAX_PAGES:
-        raise HTTPException(413, f"ページ数の上限は {config.MAX_PAGES} ページです（このPDFは {len(pages)} ページ）")
     if sum(len(p.strip()) for p in pages) < 200:
         raise HTTPException(400, "テキストを含む PDF のみ対応しています（スキャン画像のみの PDF は未対応）")
 
-    sha256 = hashlib.sha256(data).hexdigest()
-    existing = store.find_by_hash(sha256, level)
-    if existing:  # 同じ PDF は再解析せず結果を再利用（コスト削減）
-        return {"id": existing, "reused": True}
-
-    paper_id = store.new_id()
-    store.save_pdf(paper_id, data)
-    store.save(
-        {
-            "id": paper_id,
-            "filename": (file.filename or "paper.pdf")[:200],
-            "sha256": sha256,
-            "level": level,
-            "page_count": len(pages),
-            "status": "queued",
-            "error": None,
-            "demo": config.DEMO_MODE,
-            "results": {},
-            "messages": [],
-            "created_at": store.now(),
-        }
+    paper_id, reused = service.create(
+        data=data,
+        pages=pages,
+        filename=(file.filename or "paper.pdf")[:200],
+        level=level,
+        sha256=hashlib.sha256(data).hexdigest(),
     )
-    _start(paper_id)
-    return {"id": paper_id, "reused": False}
+    return {"id": paper_id, "reused": reused}
 
 
 @app.get("/api/papers/{paper_id}")
@@ -163,41 +101,32 @@ def get_paper(paper_id: str) -> dict[str, Any]:
     return _public(_load_or_404(paper_id))
 
 
-@app.get("/api/papers/{paper_id}/pdf")
-def get_pdf(paper_id: str) -> FileResponse:
+@app.get("/api/papers/{paper_id}/pdf", response_model=None)
+def get_pdf(paper_id: str) -> FileResponse | RedirectResponse:
     _load_or_404(paper_id)
+    url = store.pdf_url(paper_id)
+    if url:  # Cloud Storage では署名付き URL へ転送する
+        return RedirectResponse(url)
     return FileResponse(store.pdf_path(paper_id), media_type="application/pdf")
 
 
 @app.post("/api/papers/{paper_id}/retry")
-def retry(paper_id: str) -> dict[str, Any]:
-    paper = _load_or_404(paper_id)
-    if paper["status"] != "failed":
-        raise HTTPException(409, "失敗した解析のみ再実行できます")
-    store.update(paper_id, status="queued", error=None)
-    _start(paper_id)
+def retry(paper_id: str, service: Service) -> dict[str, Any]:
+    _load_or_404(paper_id)
+    if not service.retry_limiter.allow(paper_id):
+        raise HTTPException(429, "再実行の回数が多すぎます。1分ほど待ってからもう一度お試しください。")
+    if not service.retry(paper_id):
+        raise HTTPException(409, "失敗した解析、または止まったままの解析のみ再実行できます")
     return {"ok": True}
 
 
 @app.post("/api/papers/{paper_id}/ask")
-def ask(paper_id: str, req: AskRequest) -> dict[str, Any]:
-    paper = _load_or_404(paper_id)
-    pdf_bytes = store.pdf_path(paper_id).read_bytes()
-    pages = extract_pages(pdf_bytes)
+def ask(paper_id: str, req: AskRequest, service: Service) -> dict[str, Any]:
+    _load_or_404(paper_id)
+    if not service.ask_limiter.allow(paper_id):
+        raise HTTPException(429, "質問の回数が多すぎます。1分ほど待ってからもう一度質問してください。")
     try:
-        if config.DEMO_MODE:
-            out = mock.ask(pages, req.question)
-        else:
-            out = _gemini().ask(pdf_bytes, paper["level"], req.question, paper.get("messages", []), req.current_step)
-    except Exception as e:  # noqa: BLE001
-        log.exception("ask failed paper=%s", paper_id)
-        raise HTTPException(502, _error_message(e)) from e
-    out = verify_all(out, [normalize(p) for p in pages])
-    paper = store.load(paper_id) or paper
-    messages = paper.get("messages", [])
-    messages.append({"role": "user", "text": req.question, "created_at": store.now()})
-    messages.append(
-        {"role": "assistant", "text": out["answer"], **{k: out[k] for k in ("source", "evidence", "confidence")}, "created_at": store.now()}
-    )
-    store.update(paper_id, messages=messages)
+        messages = service.ask(paper_id, req.question, req.current_step)
+    except AskFailed as e:
+        raise HTTPException(502, e.message) from e
     return {"messages": messages}

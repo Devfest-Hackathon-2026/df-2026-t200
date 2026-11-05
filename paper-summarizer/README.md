@@ -57,10 +57,12 @@ GitHub Actions（`.github/workflows/ci.yml`）で、PR と main への push ご�
 
 ```
 backend/   FastAPI + google-genai（Gemini に PDF をネイティブ入力）+ PyMuPDF（引用の照合）
-  app/main.py       API・解析ジョブ（Step 1→2→3 を順に生成し、できた順に保存）
+  app/main.py       API（HTTP の入出力と入力チェック）
+  app/services.py   解析ジョブと Q&A の組み立て（Step 1→2→3 を順に生成し、できた順に保存）。Gemini 版とデモ版の解析器を論文ごとに選ぶ
+  app/store.py      保存層（読み込みから保存までを1つのロックで行う）
   app/gemini.py     プロンプトと Gemini 呼び出し（JSON スキーマで出力を固定）
   app/schemas.py    出力スキーマ（すべての主張に page + quote を必須化）
-  app/pdf_utils.py  引用の照合（前後ページも探してページ番号を補正）
+  app/pdf_utils.py  引用の照合（20文字・4語以上、単語の境界で照合。ページを補正したら page_corrected / claimed_page を付ける）
   app/mock.py       デモモード用のサンプル結果
 frontend/  Vite + React + TypeScript + pdf.js + KaTeX
 ```
@@ -80,11 +82,11 @@ frontend/  Vite + React + TypeScript + pdf.js + KaTeX
 | メソッド | パス | 内容 |
 | --- | --- | --- |
 | GET | `/api/health` | 動作モード（demo / gemini-api / vertex）とモデル名 |
-| POST | `/api/papers` | PDF アップロード（multipart: `file`, `level`=undergrad\|grad）。同じ PDF は再解析しない |
+| POST | `/api/papers` | PDF アップロード（multipart: `file`, `level`=undergrad\|grad）。同じ PDF は再解析せず、解析結果だけを写した新しい論文IDを返す（`reused: true`） |
 | GET | `/api/papers/{id}` | 状態と生成結果 |
 | GET | `/api/papers/{id}/pdf` | PDF 本体 |
-| POST | `/api/papers/{id}/ask` | 質問（`{question, current_step}`）→ 根拠付き回答 |
-| POST | `/api/papers/{id}/retry` | 失敗した解析の再実行 |
+| POST | `/api/papers/{id}/ask` | 質問（`{question, current_step}`）→ 根拠付き回答。論文ごとに1分10回まで（超えると 429） |
+| POST | `/api/papers/{id}/retry` | 失敗した解析、または10分以上止まったままの解析の再実行。論文ごとに1分3回まで |
 
 ## 制限事項（ローカル版）
 
