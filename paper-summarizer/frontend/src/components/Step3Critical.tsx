@@ -4,7 +4,7 @@ import type { CriticalPoint, Evidence, Origin, Step3 } from '../api'
 type Alternative = Step3['alternatives'][number]
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { EvidenceList } from '../jump'
-import { scrollBehavior } from '../motion'
+import { scrollBehavior, scrollWithin } from '../motion'
 
 const isString = (v: unknown): v is string => typeof v === 'string'
 
@@ -80,7 +80,7 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
   const resultsRef = useRef<HTMLDivElement>(null)
   // 解説を開いたら最初の項目までスクロールし、何が出てきたかを見せる
   useEffect(() => {
-    if (revealed) resultsRef.current?.scrollIntoView({ block: 'start', behavior: scrollBehavior() })
+    if (revealed && resultsRef.current) scrollWithin(resultsRef.current, 'start', scrollBehavior())
   }, [revealed])
 
   const items = [

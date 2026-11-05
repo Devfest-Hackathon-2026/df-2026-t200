@@ -27,13 +27,17 @@ describe('Step3Critical', () => {
     expect(screen.getByText('弱点は？')).toBeInTheDocument()
   })
 
-  it('scrolls to the first result when the analysis is revealed', async () => {
-    const scroll = vi.mocked(Element.prototype.scrollIntoView)
-    scroll.mockClear()
-    render(<Step3Critical data={step3} paperId="p1" />)
+  it('scrolls only the explanation pane to the first result when the analysis is revealed', async () => {
+    const pane = document.createElement('div')
+    pane.style.overflowY = 'auto'
+    const scrollTo = vi.fn()
+    pane.scrollTo = scrollTo as unknown as typeof pane.scrollTo
+    document.body.appendChild(pane)
+    render(<Step3Critical data={step3} paperId="p1" />, { container: pane })
     await userEvent.click(screen.getByRole('button', { name: '書かずに解説を見る' }))
-    expect(scroll).toHaveBeenCalled()
-    expect(scroll.mock.contexts[0]).toBe(document.querySelector('.reveal-start'))
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
+    pane.remove()
   })
 
   it('restores saved thoughts', () => {

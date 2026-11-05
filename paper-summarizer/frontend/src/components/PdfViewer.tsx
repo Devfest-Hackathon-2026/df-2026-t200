@@ -2,7 +2,7 @@ import 'pdfjs-dist/web/pdf_viewer.css'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { clearHighlights } from '../pdf/pdfText'
 import { usePdfDocument } from '../pdf/usePdfDocument'
-import { scrollBehavior } from '../motion'
+import { scrollBehavior, scrollWithin } from '../motion'
 import { PageView, type Target } from './PageView'
 
 export type PdfViewerHandle = { jumpTo: (page: number, quote?: string) => void; clearHighlight: () => void }
@@ -53,8 +53,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function P
   const settledRef = useRef(settled)
   settledRef.current = settled
 
-  const scrollToPage = (page: number, behavior: ScrollBehavior) =>
-    scrollRef.current?.querySelector(`[data-page="${page}"]`)?.scrollIntoView({ block: 'start', behavior })
+  const scrollToPage = (page: number, behavior: ScrollBehavior) => {
+    const el = scrollRef.current?.querySelector(`[data-page="${page}"]`)
+    if (el) scrollWithin(el, 'start', behavior)
+  }
 
   // 配置がそろったら、保留中の移動を行う（引用の位置へは PageView がスクロール済みならそれを優先する）
   useEffect(() => {

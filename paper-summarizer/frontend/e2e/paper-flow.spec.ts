@@ -172,3 +172,35 @@ test('reuses the analysis when the same PDF is uploaded again', async ({ page })
   await page.getByRole('tab', { name: /批判的思考/ }).click()
   await expect(page.getByRole('button', { name: '書かずに解説を見る' })).toBeVisible({ timeout: 5_000 })
 })
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`keeps the page fixed to the viewport at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    // e2e の型設定には DOM がないので、式を文字列で渡す
+    const pageScroll = () => page.evaluate<number[]>('[window.scrollY, document.scrollingElement.scrollTop]')
+    await page.goto('/')
+    await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+    await page.getByRole('tab', { name: /批判的思考/ }).click()
+    await page.getByRole('button', { name: '書かずに解説を見る' }).click({ timeout: 20_000 })
+    await expect(page.locator('.reveal-start')).toBeInViewport()
+    expect(await pageScroll()).toEqual([0, 0])
+    // 根拠チップで PDF へ移動する（狭い画面では PDF タブに切り替わる）
+    await page
+      .locator('.columns')
+      .getByRole('button', { name: /^p\.\d/ })
+      .first()
+      .click()
+    await expect(page.locator('.textLayer .hl').first()).toBeVisible()
+    await page.waitForTimeout(800)
+    expect(await pageScroll()).toEqual([0, 0])
+    if (viewport.width <= 900) await page.getByRole('tab', { name: '解説' }).click()
+    await page.getByPlaceholder('質問を入力').fill('この手法の弱点は？')
+    await page.getByRole('button', { name: '送信' }).click()
+    await expect(page.locator('.msg.assistant .badge')).toBeVisible()
+    await page.waitForTimeout(300)
+    expect(await pageScroll()).toEqual([0, 0])
+  })
+}

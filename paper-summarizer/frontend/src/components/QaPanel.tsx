@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { api, type Message } from '../api'
 import { EvidenceList } from '../jump'
+import { scrollWithin } from '../motion'
 
 const SOURCE_LABEL: Record<string, { text: string; cls: string }> = {
   paper: { text: '論文に記載', cls: 'paper' },
@@ -24,7 +25,7 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
   const inputId = `${uid}-input`
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' })
+    if (endRef.current) scrollWithin(endRef.current, 'end')
   }, [messages, busy, open])
 
   async function send(q: string) {

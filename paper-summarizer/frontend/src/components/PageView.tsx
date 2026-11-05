@@ -1,7 +1,7 @@
 import { TextLayer, type PDFDocumentProxy, type PDFPageProxy } from 'pdfjs-dist'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { highlightQuote, isCancellation } from '../pdf/pdfText'
-import { scrollBehavior } from '../motion'
+import { scrollBehavior, scrollWithin } from '../motion'
 
 /** ジャンプ先。nonce は根拠チップが押されるたびに変わり、スクロールはこの値が変わったときだけ行う。 */
 export type Target = { page: number; quote?: string; nonce: number }
@@ -128,7 +128,7 @@ export function PageView({
     const first = highlightQuote(textRef.current, target.quote)
     if (first && settled && scrolledNonce.current !== target.nonce) {
       scrolledNonce.current = target.nonce
-      first.scrollIntoView({ block: 'center', behavior: scrollBehavior() })
+      scrollWithin(first, 'center', scrollBehavior())
       onQuoteScrolled(target.nonce)
     }
   }, [target, num, rendered, settled, onQuoteScrolled])

@@ -38,11 +38,18 @@
 * {
   box-sizing: border-box;
 }
+/* ページ全体は画面に固定し、スクロールするのは PDF・解説・Q&A・一覧の欄だけにする */
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+#root {
+  height: 100vh;
+  height: 100dvh;
 }
 body {
   background: var(--wall);
