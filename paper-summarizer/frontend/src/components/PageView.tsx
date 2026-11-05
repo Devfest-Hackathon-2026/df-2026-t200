@@ -114,8 +114,10 @@ export function PageView({
       canvas.height = 0
     }
     textRef.current?.replaceChildren()
-    // 描画の中断が終わってから解放する（描画中は cleanup が何もしないため）
-    held.run.done.finally(() => held.page.cleanup())
+    // 描画の中断が終わってから解放する（描画中は cleanup が何もしないため）。その間に描画し直していたら解放しない
+    held.run.done.finally(() => {
+      if (!pageRef.current) held.page.cleanup()
+    })
   }, [shouldRender])
 
   // 強調は描き直すたびに付け直す。スクロールは新しいジャンプ（nonce）のときだけ、配置がそろってから行う
