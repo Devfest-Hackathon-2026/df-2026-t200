@@ -1,0 +1,7 @@
+# 運営配布資料はリポジトリに含めない
+*.pdf
+!paper-summarizer/**/*.pdf
+.DS_Store
+
+# 同じリポジトリの別クローン（入れ子にしない）
+/DevFesHack/

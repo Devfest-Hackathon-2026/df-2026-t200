@@ -1,0 +1,152 @@
+"""Gemini の構造化出力スキーマ（response_schema）と API 応答の型。
+
+すべての主張に「根拠（ページ番号 + 原文の引用）」を必須で持たせる。
+引用はサーバー側で PDF のテキストと照合し、verified を付けてからフロントへ返す。
+"""
+
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+
+class Evidence(BaseModel):
+    page: int = Field(description="根拠のある PDF の物理ページ番号（1始まり。論文に印字されたページ番号ではない）")
+    quote: str = Field(description="そのページから一字一句そのまま抜き出した原文（英語なら英語のまま、10〜25語程度）")
+    verified: bool | None = Field(default=None, description="サーバーが付与。Gemini は出力しない")
+
+
+class Origin(str, Enum):
+    paper = "paper"  # 論文自身が述べている
+    ai_inference = "ai_inference"  # AI による指摘（要検証）
+
+
+class AnswerSource(str, Enum):
+    paper = "paper"
+    general_knowledge = "general_knowledge"
+    not_in_paper = "not_in_paper"
+
+
+class Confidence(str, Enum):
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+# ---------- Step 1: 前提知識マップ ----------
+
+
+class Concept(BaseModel):
+    id: str = Field(description="英小文字とハイフンのみの短いID（例: softmax）")
+    name: str = Field(description="概念名")
+    description: str = Field(description="対象読者向けの2〜3文の説明")
+    why_needed: str = Field(description="この論文を読むのになぜ必要か（1文）")
+    first_page: int | None = Field(description="論文内で最初に登場する PDF ページ。登場しなければ null")
+    depends_on: list[str] = Field(description="この概念を理解する前提になる他の概念の id")
+
+
+class SectionInfo(BaseModel):
+    title: str
+    page_start: int
+    page_end: int
+
+
+class ReadingItem(BaseModel):
+    section: str = Field(description="節の名前")
+    page: int = Field(description="その節の開始ページ")
+    reason: str = Field(description="この順番で読む理由（1文）")
+
+
+class Step1(BaseModel):
+    title: str = Field(description="論文タイトル（原文のまま）")
+    summary: list[str] = Field(description="ちょうど3項目: [何の問題か, どう解いたか, 何が分かったか]")
+    difficulty: str = Field(description="初級 / 中級 / 上級 のいずれか")
+    concepts: list[Concept] = Field(description="前提知識 6〜10 個。基礎的なものから順に")
+    sections: list[SectionInfo]
+    reading_order: list[ReadingItem] = Field(description="初めて読む学生に勧める読む順番 4〜6 項目")
+
+
+# ---------- Step 2: コアロジック＆図表連動ウォークスルー ----------
+
+
+class SymbolInfo(BaseModel):
+    symbol_latex: str = Field(description="記号の LaTeX（$ なし）")
+    meaning: str
+    defined_page: int | None
+
+
+class Equation(BaseModel):
+    label: str = Field(description="式番号（例: (1)）。無ければ短い名前")
+    page: int
+    latex: str = Field(description="式全体の LaTeX（$ なし、KaTeX で描画可能なもの）")
+    plain_meaning: str = Field(description="この式を一言でいうと")
+    symbols: list[SymbolInfo]
+
+
+class FigureInfo(BaseModel):
+    label: str = Field(description="Figure 3 / Table 1 など")
+    page: int
+    what_it_shows: str
+    how_to_read: str = Field(description="軸・凡例・色の読み方")
+    supports_claim: str = Field(description="本文のどの主張を支えているか")
+    referenced_at: list[Evidence] = Field(description="本文でこの図表に言及している箇所")
+
+
+class Stage(BaseModel):
+    title: str = Field(description="段階の名前（例: 入力の埋め込み）")
+    explanation: str = Field(description="この段階で何をしているかを順を追って説明（3〜6文）")
+    evidence: list[Evidence] = Field(description="説明の根拠となる本文 1〜3 箇所")
+    figures: list[FigureInfo]
+    equations: list[Equation]
+
+
+class Step2(BaseModel):
+    overview: str = Field(description="提案手法の流れを2文で")
+    stages: list[Stage] = Field(description="入力 → 処理 → 出力 の順に 3〜6 段階")
+
+
+# ---------- Step 3: 批判的思考チェック ----------
+
+
+class CriticalPoint(BaseModel):
+    text: str
+    origin: Origin = Field(description="論文自身が述べていれば paper、AI の推論なら ai_inference")
+    evidence: list[Evidence] = Field(description="origin=paper なら必須。ai_inference なら推論のきっかけになった箇所")
+
+
+class Alternative(BaseModel):
+    name: str
+    description: str
+    comparison: str = Field(description="提案手法と比べた長所・短所")
+    origin: Origin
+    evidence: list[Evidence]
+
+
+class LikelyQuestion(BaseModel):
+    question: str = Field(description="輪講・ゼミで聞かれそうな質問")
+    hint: str = Field(description="答え方のヒント（答えそのものではなく、どこを見ればよいか）")
+
+
+class Step3(BaseModel):
+    prompts: list[str] = Field(description="解説を見る前に学生に考えさせる問い 2〜3 個")
+    pros: list[CriticalPoint]
+    cons: list[CriticalPoint]
+    limitations: list[CriticalPoint]
+    alternatives: list[Alternative]
+    likely_questions: list[LikelyQuestion]
+
+
+# ---------- Q&A ----------
+
+
+class Answer(BaseModel):
+    answer: str
+    source: AnswerSource = Field(
+        description="論文に書いてあれば paper、論文外の一般知識で答えたなら general_knowledge、論文に記載がなく答えられないなら not_in_paper"
+    )
+    evidence: list[Evidence]
+    confidence: Confidence
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    current_step: int | None = None

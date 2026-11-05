@@ -1,0 +1,17 @@
+# 秘密情報（APIキー）は絶対にコミットしない
+.env
+*.env.local
+
+# ローカルデータ（アップロードされた論文と解析結果）
+backend/data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+frontend/dist/
+
+.DS_Store
