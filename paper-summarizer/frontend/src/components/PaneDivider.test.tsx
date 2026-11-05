@@ -1,17 +1,26 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { PaneDivider } from './PaneDivider'
-import { clampSplit, SPLIT_DEFAULT, SPLIT_MAX, SPLIT_MIN } from './paneSplit'
+import { clampSplit, splitBounds, SPLIT_DEFAULT, SPLIT_MAX, SPLIT_MIN, type SplitBounds } from './paneSplit'
 
-function Harness({ initial = SPLIT_DEFAULT, onChange }: { initial?: number; onChange?: (v: number) => void }) {
+function Harness({
+  initial = SPLIT_DEFAULT,
+  bounds = { min: SPLIT_MIN, max: SPLIT_MAX },
+  onChange,
+}: {
+  initial?: number
+  bounds?: SplitBounds
+  onChange?: (v: number) => void
+}) {
   const [value, setValue] = useState(initial)
-  const box = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState<HTMLDivElement | null>(null)
   return (
-    <div ref={box} data-testid="box">
+    <div ref={setBox} data-testid="box">
       <PaneDivider
         value={value}
-        containerRef={box}
+        bounds={bounds}
+        container={box}
         onChange={(v) => {
           setValue(v)
           onChange?.(v)
@@ -29,6 +38,23 @@ describe('clampSplit', () => {
     expect(clampSplit(90)).toBe(SPLIT_MAX)
     expect(clampSplit(42.4)).toBe(42.4)
     expect(clampSplit(Number.NaN)).toBe(SPLIT_DEFAULT)
+    expect(clampSplit(70, { min: 30, max: 57.1 })).toBe(57.1)
+  })
+})
+
+describe('splitBounds', () => {
+  it('leaves room for both panes on a narrow window', () => {
+    // 901px: PDF に 240px、解説に 380px、境目に 12px を残すと 27.4〜57.1%
+    expect(splitBounds(901)).toEqual({ min: 27.4, max: 57.1 })
+  })
+
+  it('uses the percentage limits on a wide window', () => {
+    expect(splitBounds(2000)).toEqual({ min: SPLIT_MIN, max: SPLIT_MAX })
+  })
+
+  it('falls back to the percentage limits when the width is unknown or too small', () => {
+    expect(splitBounds(0)).toEqual({ min: SPLIT_MIN, max: SPLIT_MAX })
+    expect(splitBounds(500)).toEqual({ min: SPLIT_MIN, max: SPLIT_MAX })
   })
 })
 
@@ -42,6 +68,26 @@ describe('PaneDivider', () => {
     expect(sep).toHaveAttribute('aria-valuemax', String(SPLIT_MAX))
     expect(sep).toHaveAttribute('aria-controls', 'view-panel-pdf')
     expect(sep).toHaveAttribute('tabindex', '0')
+    expect(sep).toHaveAttribute('aria-valuetext', 'PDF 40%')
+  })
+
+  it('keeps the keys and the announced range inside the bounds for this window', () => {
+    render(<Harness initial={50} bounds={{ min: 27.4, max: 57.1 }} />)
+    const sep = divider()
+    expect(sep).toHaveAttribute('aria-valuemin', '27.4')
+    expect(sep).toHaveAttribute('aria-valuemax', '57.1')
+    fireEvent.keyDown(sep, { key: 'ArrowRight', shiftKey: true })
+    expect(sep).toHaveAttribute('aria-valuenow', '57.1')
+    fireEvent.keyDown(sep, { key: 'Home' })
+    expect(sep).toHaveAttribute('aria-valuenow', '27.4')
+  })
+
+  it('cleans up the dragging state if it unmounts in the middle of a drag', () => {
+    const { unmount } = render(<Harness />)
+    fireEvent.pointerDown(divider(), { clientX: 600, pointerId: 1, button: 0 })
+    expect(document.body).toHaveClass('pane-resizing')
+    unmount()
+    expect(document.body).not.toHaveClass('pane-resizing')
   })
 
   it('moves with the arrow keys and stops at the limits', () => {

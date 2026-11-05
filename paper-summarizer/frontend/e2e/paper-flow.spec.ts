@@ -120,9 +120,21 @@ test('drags the middle bar to resize the PDF and explanation, and keeps the widt
   // 端まで寄せても、解説には読める幅が残る
   await bar.focus()
   await page.keyboard.press('End')
-  await expect(bar).toHaveAttribute('aria-valuenow', '75')
+  // 1400px では 75% だと解説が 380px を切るので、上限は 72.4%
+  await expect(bar).toHaveAttribute('aria-valuemax', '72.4')
+  await expect(bar).toHaveAttribute('aria-valuenow', '72.4')
   expect(await width('.pane-right')).toBeGreaterThanOrEqual(380)
 
+  // 狭い PC の画面では、最小幅を守れる範囲までしか動かず、値と見た目の幅が一致する
+  await page.setViewportSize({ width: 901, height: 800 })
+  await expect(bar).toHaveAttribute('aria-valuenow', '57.1')
+  const total = await width('.workspace')
+  expect(Math.abs((await width('.pane-left')) / total - 0.571)).toBeLessThan(0.01)
+  expect(await width('.pane-right')).toBeGreaterThanOrEqual(380)
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await expect(bar).toHaveAttribute('aria-valuenow', '72.4')
+
+  await bar.focus()
   await page.keyboard.press('Home')
   await page.reload()
   await expect(page.getByRole('separator', { name: 'PDFと解説の幅' })).toHaveAttribute('aria-valuenow', '25')

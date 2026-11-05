@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Step1 } from '../api'
+import { useElementWidth } from '../hooks/useElementWidth'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { PageChip } from '../jump'
 import { edgePaths, layoutConcepts, ovalPath } from './conceptLayout'
@@ -19,21 +20,6 @@ function useNarrow(): boolean {
   return narrow
 }
 
-/** 要素の内側の幅。表示されていない（幅 0）間は最後に測った値のままにする。測れない環境では null */
-function useWidth(ref: RefObject<HTMLElement | null>): number | null {
-  const [width, setWidth] = useState<number | null>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => {
-      if (el.clientWidth > 0) setWidth(el.clientWidth)
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [ref])
-  return width
-}
-
 type Knowledge = Record<string, 'known' | 'unknown'>
 
 const isKnowledge = (v: unknown): v is Knowledge =>
@@ -43,8 +29,7 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
   const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
   const [selected, setSelected] = useState<string | null>(data.concepts[0]?.id ?? null)
   const narrow = useNarrow()
-  const graphBox = useRef<HTMLDivElement>(null)
-  const available = useWidth(graphBox)
+  const { ref: graphBox, width: available } = useElementWidth<HTMLDivElement>()
   const wide = useMemo(() => layoutConcepts(data.concepts, false), [data.concepts])
   // 狭い画面に加え、境目を動かして解説側が狭くなり横並びの図が入らないときも、上から下へ並べる
   const stacked = narrow || (available != null && available < wide.width)

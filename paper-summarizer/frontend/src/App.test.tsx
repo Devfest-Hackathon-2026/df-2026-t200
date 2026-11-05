@@ -179,6 +179,34 @@ describe('App', () => {
     localStorage.removeItem('pane-split')
   })
 
+  it('keeps both panes readable on a narrow window without forgetting the saved width', async () => {
+    localStorage.setItem('pane-split', '75')
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    )
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('workspace') ? 901 : 0
+    })
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    const { container } = render(<App />)
+    await screen.findByText('問題A')
+    const sep = screen.getByRole('separator', { name: 'PDFと解説の幅' })
+    expect(sep).toHaveAttribute('aria-valuenow', '57.1')
+    expect(sep).toHaveAttribute('aria-valuemax', '57.1')
+    expect(container.querySelector<HTMLElement>('.workspace')!.style.getPropertyValue('--split')).toBe('57.1%')
+    // 保存した値は変えない（広い画面に戻せば 75% で開く）
+    expect(JSON.parse(localStorage.getItem('pane-split')!)).toBe(75)
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+    localStorage.removeItem('pane-split')
+  })
+
   it('falls back to an even split when the saved width is out of range', async () => {
     localStorage.setItem('pane-split', '5')
     window.location.hash = `#/paper/${paper.id}`

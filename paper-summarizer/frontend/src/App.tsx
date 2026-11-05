@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { api, type Health } from './api'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { PaneDivider } from './components/PaneDivider'
-import { isSplit, SPLIT_DEFAULT } from './components/paneSplit'
+import { clampSplit, isSplit, SPLIT_DEFAULT, splitBounds } from './components/paneSplit'
 import { PdfViewer, type PdfViewerHandle } from './components/PdfViewer'
 import { QaPanel } from './components/QaPanel'
 import { Step1Map } from './components/Step1Map'
@@ -10,6 +10,7 @@ import { Step2Walkthrough } from './components/Step2Walkthrough'
 import { Step3Critical } from './components/Step3Critical'
 import { TabList } from './components/TabList'
 import { Upload } from './components/Upload'
+import { useElementWidth } from './hooks/useElementWidth'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { usePaper } from './hooks/usePaper'
 import { JumpContext, type JumpFn } from './jump'
@@ -38,9 +39,12 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
   const [step, setStep] = useState(1)
   const [view, setView] = useState<'pdf' | 'explain'>('explain')
   const viewer = useRef<PdfViewerHandle>(null)
-  const workspace = useRef<HTMLDivElement>(null)
+  const { ref: setWorkspace, element: workspaceBox, width: workspaceWidth } = useElementWidth<HTMLDivElement>()
   // 広い画面で PDF が占める幅（%）。どの論文でも同じ幅で開けるよう、論文ごとではなく 1 つだけ覚える
   const [split, setSplit] = useLocalStorageState('pane-split', SPLIT_DEFAULT, isSplit)
+  // 画面の幅によっては PDF や解説の最小幅を守るために動かせる範囲が狭まる。保存した値はそのままにし、表示だけ範囲に収める
+  const bounds = splitBounds(workspaceWidth ?? 0)
+  const shownSplit = clampSplit(split, bounds)
   const jump = useCallback<JumpFn>((page, quote, options) => {
     // 広い画面、または画面を切り替えたくない移動（Step 2 を開いたときの強調など）はそのまま頼む。
     // PDF が隠れている間の移動は PdfViewer が保留し、表示されたときに行う
@@ -96,11 +100,11 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
         selected={view}
         onSelect={setView}
       />
-      <div ref={workspace} className={`workspace show-${view}`} style={{ '--split': `${split}%` } as CSSProperties}>
+      <div ref={setWorkspace} className={`workspace show-${view}`} style={{ '--split': `${shownSplit}%` } as CSSProperties}>
         <div className="pane-left" id="view-panel-pdf" role="tabpanel" aria-labelledby="view-tab-pdf">
           <PdfViewer ref={viewer} url={api.pdfUrl(id)} />
         </div>
-        <PaneDivider value={split} onChange={setSplit} containerRef={workspace} />
+        <PaneDivider value={shownSplit} bounds={bounds} onChange={setSplit} container={workspaceBox} />
         <div className="pane-right" id="view-panel-explain" role="tabpanel" aria-labelledby="view-tab-explain">
           <div className="paper-title">
             <h1>{r.step1?.title ?? paper.filename}</h1>

@@ -291,6 +291,9 @@ h3 {
 /* PDF と解説の境目。普段は細い線、触れると青い線とつまみが出る */
 .pane-divider {
   position: relative;
+  z-index: 2;
+  /* 見た目の線は細いまま、つかめる幅を左右に 6px ずつ広げて 24px にする */
+  margin: 0 -6px;
   cursor: col-resize;
   touch-action: none;
   outline: none;
@@ -298,7 +301,7 @@ h3 {
 .pane-divider::before {
   content: '';
   position: absolute;
-  inset: 0 5px;
+  inset: 0 11px;
   background: #e4e6e8;
   transition:
     background-color 120ms,
@@ -320,7 +323,7 @@ h3 {
 .pane-divider:hover::before,
 .pane-divider:focus-visible::before,
 body.pane-resizing .pane-divider::before {
-  inset: 0 4px;
+  inset: 0 10px;
   background: var(--blue);
 }
 .pane-divider:hover::after,
