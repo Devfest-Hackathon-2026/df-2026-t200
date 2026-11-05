@@ -2,7 +2,7 @@ import threading
 
 import pytest
 
-from app import store
+from app import config, store
 
 
 def _paper(pid, **kw):
@@ -137,3 +137,40 @@ def test_transition_returns_none_when_not_allowed():
 def test_transition_missing_raises():
     with pytest.raises(KeyError):
         store.transition(store.new_id(), lambda _p: True, status="queued")
+
+
+def test_save_does_not_mutate_callers_dict():
+    pid = store.new_id()
+    paper = _paper(pid)
+    saved = store.save(paper)
+    assert "updated_at" not in paper
+    assert saved["updated_at"]
+
+
+def test_list_and_find_skip_corrupt_json():
+    pid = store.new_id()
+    store.save(_paper(pid, sha256="h", level="grad", status="done"))
+    (config.PAPER_DIR / "0123456789abcdef.json").write_text("{broken", encoding="utf-8")
+    (config.PAPER_DIR / "fedcba9876543210.json").write_text('{"id": "fedcba9876543210"}', encoding="utf-8")
+    assert [p["id"] for p in store.list_papers()] == [pid]
+    assert store.find_by_hash("h", "grad") == pid
+
+
+def test_pages_cache_roundtrip():
+    pid = store.new_id()
+    assert store.load_pages(pid) is None
+    store.save_pages(pid, ["Raw A"], ["raw a"])
+    assert store.load_pages(pid) == (["Raw A"], ["raw a"])
+
+
+def test_corrupt_pages_cache_is_ignored():
+    pid = store.new_id()
+    store.pages_path(pid).write_text("{broken", encoding="utf-8")
+    assert store.load_pages(pid) is None
+
+
+def test_get_pdf_bytes_and_local_pdf_url():
+    pid = store.new_id()
+    store.save_pdf(pid, b"%PDF-data")
+    assert store.get_pdf_bytes(pid) == b"%PDF-data"
+    assert store.pdf_url(pid) is None  # ローカルでは API から直接返す

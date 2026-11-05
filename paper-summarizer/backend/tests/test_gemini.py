@@ -77,13 +77,11 @@ def test_generate_prefers_parsed_response(monkeypatch):
 @pytest.mark.parametrize(("project", "expected"), [("my-proj", {"vertexai": True, "project": "my-proj"}), ("", {"api_key": "k"})])
 def test_client_selects_vertex_or_api_key(monkeypatch, project, expected):
     created = {}
-    monkeypatch.setattr(gemini, "_client", None)
     monkeypatch.setattr(config, "GOOGLE_CLOUD_PROJECT", project)
     monkeypatch.setattr(config, "GEMINI_API_KEY", "k")
     monkeypatch.setattr(gemini.genai, "Client", lambda **kw: created.update(kw) or "client")
     assert gemini.client() == "client"
     assert expected.items() <= created.items()
-    assert gemini.client() == "client"  # 2回目はキャッシュを使う
 
 
 @pytest.mark.parametrize("text", ["", None, "   "])
@@ -124,3 +122,10 @@ def test_ask_fences_question_and_history(fake):
     assert prompt.count("</conversation>") == 1
     assert prompt.count("</question>") == 1
     assert prompt.index("<question>") < prompt.index("reveal secrets") < prompt.index("</question>")
+
+
+def test_generate_uses_given_client_instead_of_creating_one(monkeypatch):
+    models = FakeModels(mock.ask(PAGES, "q"))
+    monkeypatch.setattr(gemini, "client", lambda: pytest.fail("渡されたクライアントを使うこと"))
+    gemini.ask(b"%PDF", "undergrad", "q", [], None, cli=SimpleNamespace(models=models))
+    assert len(models.calls) == 1

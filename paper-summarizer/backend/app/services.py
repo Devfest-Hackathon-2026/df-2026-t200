@@ -1,0 +1,263 @@
+"""解析と Q&A の組み立て。HTTP の扱い（main.py）と、生成（解析器）・保存（store）をつなぐ。
+
+解析器は Gemini 版とデモ版を同じ形で差し替えられる。論文ごとの demo フラグで選ぶので、
+デモモードで作った論文はあとから認証情報を設定してもデモのまま答える（逆も同じ）。
+run_analysis(paper_id) は何度呼ばれても同じ結果になる（Cloud Tasks の再試行で呼ばれる前提）。
+"""
+
+import logging
+import threading
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from types import ModuleType
+from typing import Any, Protocol
+
+from . import config, errors, mock, store
+from .pdf_utils import extract_pages, normalize, verify_all
+from .ratelimit import RateLimiter
+from .schemas import Paper
+
+log = logging.getLogger("paper")
+
+STEP_KEYS = ("step1", "step2", "step3")
+
+
+@dataclass(frozen=True)
+class PaperSource:
+    """解析器に渡す材料。Gemini 版は PDF 本体を、デモ版は抽出したページを使う。"""
+
+    paper: Paper
+    pdf_bytes: bytes
+    pages: list[str]
+    norm_pages: list[str]
+
+
+class Analyzer(Protocol):
+    def step1(self, src: PaperSource) -> dict[str, Any]: ...
+    def step2(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]: ...
+    def step3(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]: ...
+    def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]: ...
+
+
+class DemoAnalyzer:
+    """認証情報がないときのサンプル解析（mock）。"""
+
+    def step1(self, src: PaperSource) -> dict[str, Any]:
+        return mock.step1(src.pages, src.paper.filename)
+
+    def step2(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
+        return mock.step2(src.pages)
+
+    def step3(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
+        return mock.step3(src.pages)
+
+    def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]:
+        return mock.ask(src.pages, question)
+
+
+class GeminiAnalyzer:
+    """Gemini 版。クライアントは最初に使うときに1つだけ作り、この解析器が持つ。"""
+
+    def __init__(self) -> None:
+        self._client: Any = None
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _gemini() -> ModuleType:
+        from . import gemini  # 認証情報がないデモモードでは読み込まない
+
+        return gemini
+
+    def _cli(self) -> Any:
+        with self._lock:
+            if self._client is None:
+                self._client = self._gemini().client()
+            return self._client
+
+    def step1(self, src: PaperSource) -> dict[str, Any]:
+        return self._gemini().step1(src.pdf_bytes, src.paper.level, cli=self._cli())
+
+    def step2(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
+        return self._gemini().step2(src.pdf_bytes, src.paper.level, s1, cli=self._cli())
+
+    def step3(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
+        return self._gemini().step3(src.pdf_bytes, src.paper.level, s1, cli=self._cli())
+
+    def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]:
+        return self._gemini().ask(src.pdf_bytes, src.paper.level, question, history, current_step, cli=self._cli())
+
+
+def _generate_step(analyzer: Analyzer, key: str, src: PaperSource, results: dict[str, Any]) -> dict[str, Any]:
+    if key == "step1":
+        return analyzer.step1(src)
+    if key == "step2":
+        return analyzer.step2(src, results["step1"])
+    return analyzer.step3(src, results["step1"])
+
+
+def is_stale(paper: dict[str, Any]) -> bool:
+    stamp = paper.get("updated_at") or paper.get("created_at")
+    try:
+        last = datetime.fromisoformat(stamp)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return True
+    return (datetime.now(UTC) - last).total_seconds() > config.STALE_AFTER_SEC
+
+
+def retryable(paper: dict[str, Any]) -> bool:
+    """失敗した解析と、サーバー停止などで止まったままの解析（一定時間更新なし）を再実行できる。"""
+    status = paper.get("status", "")
+    if status == "failed":
+        return True
+    return (status == "queued" or status.startswith("processing_")) and is_stale(paper)
+
+
+class AskFailed(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+class PaperService:
+    def __init__(
+        self,
+        analyzers: Mapping[bool, Analyzer] | None = None,
+        max_jobs: int = 2,
+        starter: Callable[[str], None] | None = None,
+    ):
+        # キーは論文の demo フラグ
+        self.analyzers: Mapping[bool, Analyzer] = analyzers or {True: DemoAnalyzer(), False: GeminiAnalyzer()}
+        # 同時に走る解析ジョブ数を制限（Cloud Tasks の同時実行数制限に相当。API のレート制限対策）
+        self._job_slots = threading.BoundedSemaphore(max_jobs)
+        self._running: set[str] = set()
+        self._running_lock = threading.Lock()
+        self._starter = starter or self._start_thread
+        self.ask_limiter = RateLimiter(config.ASK_RATE_PER_MIN, 60)
+        self.retry_limiter = RateLimiter(config.RETRY_RATE_PER_MIN, 60)
+
+    # ---------- 材料 ----------
+
+    def analyzer_for(self, paper: Paper) -> Analyzer:
+        return self.analyzers[paper.demo]
+
+    def _source(self, paper: Paper) -> PaperSource:
+        pdf_bytes = store.get_pdf_bytes(paper.id)
+        cached = store.load_pages(paper.id)
+        if cached is None:  # アップロード時に保存していない古い論文だけ、ここで1回抽出して保存する
+            pages = extract_pages(pdf_bytes)
+            cached = (pages, [normalize(p) for p in pages])
+            store.save_pages(paper.id, *cached)
+        return PaperSource(paper=paper, pdf_bytes=pdf_bytes, pages=cached[0], norm_pages=cached[1])
+
+    # ---------- 作成 ----------
+
+    def create(self, *, data: bytes, pages: list[str], filename: str, level: str, sha256: str = "") -> tuple[str, bool]:
+        """論文の記録を作る。同じ PDF が解析済みなら解析結果（results）だけを写し、再解析しない。
+
+        記録はアップロードごとに新しく作り、ほかの人の論文IDや会話履歴は返さない。
+        """
+        existing_id = store.find_by_hash(sha256, level) if sha256 else None
+        source = store.load(existing_id) if existing_id else None
+        paper_id = store.new_id()
+        store.save_pdf(paper_id, data)
+        store.save_pages(paper_id, pages, [normalize(p) for p in pages])
+        store.save(
+            {
+                "id": paper_id,
+                "filename": filename,
+                "sha256": sha256,
+                "level": level,
+                "page_count": len(pages),
+                "status": "done" if source else "queued",
+                "error": None,
+                "demo": source["demo"] if source else config.DEMO_MODE,
+                "results": dict(source["results"]) if source else {},
+                "messages": [],
+                "created_at": store.now(),
+            }
+        )
+        if source:
+            return paper_id, True
+        self.start(paper_id)
+        return paper_id, False
+
+    # ---------- 解析 ----------
+
+    def start(self, paper_id: str) -> None:
+        self._starter(paper_id)
+
+    def _start_thread(self, paper_id: str) -> None:
+        threading.Thread(target=self.run_analysis, args=(paper_id,), daemon=True).start()
+
+    def run_analysis(self, paper_id: str) -> None:
+        """Step 1 → 2 → 3 を順に生成し、終わったものから保存する（画面は届いた順に表示）。
+
+        何度呼んでも同じ結果になる: 解析済みなら何もしない、終わった Step は飛ばす、
+        同じ論文の解析がこのプロセスで走っていれば何もしない。
+        """
+        with self._running_lock:
+            if paper_id in self._running:
+                log.info("analysis already running paper=%s", paper_id)
+                return
+            self._running.add(paper_id)
+        try:
+            with self._job_slots:
+                self._analyze(paper_id)
+        finally:
+            with self._running_lock:
+                self._running.discard(paper_id)
+
+    def _analyze(self, paper_id: str) -> None:
+        try:
+            raw = store.load(paper_id)
+            if raw is None:
+                log.warning("analysis skipped: paper=%s not found", paper_id)
+                return
+            paper = Paper.model_validate(raw)
+            if paper.status == "done":
+                return
+            src = self._source(paper)
+            analyzer = self.analyzer_for(paper)
+            results = dict(paper.results)
+            for key in STEP_KEYS:
+                if results.get(key):
+                    continue
+                store.update(paper_id, status=f"processing_{key}")
+                log.info("paper=%s %s start (demo=%s)", paper_id, key, paper.demo)
+                results[key] = verify_all(_generate_step(analyzer, key, src, results), src.norm_pages)
+                store.set_result(paper_id, key, results[key])
+                log.info("paper=%s %s done", paper_id, key)
+            store.update(paper_id, status="done", error=None)
+        except Exception as e:  # noqa: BLE001
+            # 画面には決まった文言だけを返し、詳細は paper_id 付きでログに残す
+            log.exception("analysis failed paper=%s", paper_id)
+            try:
+                store.update(paper_id, status="failed", error=errors.user_message(e))
+            except KeyError:
+                log.warning("paper=%s disappeared during analysis", paper_id)
+
+    def retry(self, paper_id: str) -> bool:
+        """状態の確認と queued への変更を1回の操作で行い、二度押しで解析が2本走らないようにする。"""
+        if store.transition(paper_id, retryable, status="queued", error=None) is None:
+            return False
+        self.start(paper_id)
+        return True
+
+    # ---------- Q&A ----------
+
+    def ask(self, paper_id: str, question: str, current_step: int | None) -> list[dict[str, Any]]:
+        paper = Paper.model_validate(store.load(paper_id))
+        src = self._source(paper)
+        try:
+            out = self.analyzer_for(paper).ask(src, question, paper.messages, current_step)
+        except Exception as e:  # noqa: BLE001
+            log.exception("ask failed paper=%s", paper_id)
+            raise AskFailed(errors.user_message(e)) from e
+        out = verify_all(out, src.norm_pages)
+        updated = store.append_messages(
+            paper_id,
+            {"role": "user", "text": question, "created_at": store.now()},
+            {"role": "assistant", "text": out["answer"], **{k: out[k] for k in ("source", "evidence", "confidence")}, "created_at": store.now()},
+        )
+        return updated["messages"]

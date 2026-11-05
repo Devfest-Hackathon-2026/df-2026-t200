@@ -11,25 +11,33 @@ from fastapi.testclient import TestClient
 from google.genai import errors as genai_errors
 from make_sample_pdf import make_pdf
 
-from app import config, main, store
+from app import config, errors, main, mock, store
 from app.errors import EmptyResponseError
 from app.ratelimit import RateLimiter
+from app.services import PaperService
 
 
 @pytest.fixture
-def client(monkeypatch):
+def service():
     """解析スレッドを記録し、テスト終了時に終わるまで待つ（次のテストへ結果が書き込まれないように）。"""
     threads: list[threading.Thread] = []
 
     def start(paper_id):
-        t = threading.Thread(target=main._run_analysis, args=(paper_id,), daemon=True)
+        t = threading.Thread(target=svc.run_analysis, args=(paper_id,), daemon=True)
         threads.append(t)
         t.start()
 
-    monkeypatch.setattr(main, "_start", start)
-    yield TestClient(main.app)
+    svc = PaperService(starter=start)
+    yield svc
     for t in threads:
         t.join(timeout=10)
+
+
+@pytest.fixture
+def client(service):
+    main.app.dependency_overrides[main.get_service] = lambda: service
+    yield TestClient(main.app)
+    main.app.dependency_overrides.clear()
 
 
 def _upload(client, data, level="undergrad", name="paper.pdf"):
@@ -183,7 +191,7 @@ def test_ask_returns_502_with_friendly_message_on_failure(client, sample_pdf, mo
     def boom(*_a, **_k):
         raise _api_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded for project secret-proj-123")
 
-    monkeypatch.setattr(main.mock, "ask", boom)
+    monkeypatch.setattr(mock, "ask", boom)
     res = client.post(f"/api/papers/{pid}/ask", json={"question": "q"})
     assert res.status_code == 502
     assert "レート制限" in res.json()["detail"]
@@ -197,8 +205,8 @@ def test_retry_only_allowed_when_failed(client, sample_pdf, monkeypatch):
 
 
 def test_failed_analysis_can_be_retried(client, sample_pdf, monkeypatch):
-    original = main.mock.step2
-    monkeypatch.setattr(main.mock, "step2", lambda *_a: (_ for _ in ()).throw(_api_error(403, "PERMISSION_DENIED", "denied on secret-proj-123")))
+    original = mock.step2
+    monkeypatch.setattr(mock, "step2", lambda *_a: (_ for _ in ()).throw(_api_error(403, "PERMISSION_DENIED", "denied on secret-proj-123")))
     pid = _upload(client, sample_pdf).json()["id"]
     paper = _wait_done(client, pid)
     assert paper["status"] == "failed"
@@ -206,7 +214,7 @@ def test_failed_analysis_can_be_retried(client, sample_pdf, monkeypatch):
     assert "secret-proj-123" not in paper["error"]
     assert "step1" in paper["results"]  # 失敗前に終わった Step は残る
 
-    monkeypatch.setattr(main.mock, "step2", original)
+    monkeypatch.setattr(mock, "step2", original)
     assert client.post(f"/api/papers/{pid}/retry").json() == {"ok": True}
     assert _wait_done(client, pid)["status"] == "done"
 
@@ -230,14 +238,14 @@ def _api_error(code, status, message):
     ],
 )
 def test_error_message_is_classified_by_type_and_code(exc, expected):
-    msg = main._error_message(exc)
+    msg = errors.user_message(exc)
     assert expected in msg
     assert "secret-proj-123" not in msg
     assert str(exc)[:20] not in msg
 
 
 def test_generic_error_does_not_leak_details(client, sample_pdf, monkeypatch):
-    monkeypatch.setattr(main.mock, "step1", lambda *_a: (_ for _ in ()).throw(RuntimeError("Vertex project secret-proj-123 model x")))
+    monkeypatch.setattr(mock, "step1", lambda *_a: (_ for _ in ()).throw(RuntimeError("Vertex project secret-proj-123 model x")))
     pid = _upload(client, sample_pdf).json()["id"]
     paper = _wait_done(client, pid)
     assert paper["status"] == "failed"
@@ -285,9 +293,9 @@ def test_recent_processing_cannot_be_retried(client, sample_pdf):
     assert client.post(f"/api/papers/{pid}/retry").status_code == 409
 
 
-def test_double_retry_starts_only_one_job(client, sample_pdf, monkeypatch):
+def test_double_retry_starts_only_one_job(client, service, sample_pdf, monkeypatch):
     started = []
-    monkeypatch.setattr(main, "_start", started.append)
+    monkeypatch.setattr(service, "_starter", started.append)
     pid = _stuck_paper(sample_pdf, "failed")
     codes = [client.post(f"/api/papers/{pid}/retry").status_code for _ in range(2)]
     assert codes == [200, 409]
@@ -297,18 +305,18 @@ def test_double_retry_starts_only_one_job(client, sample_pdf, monkeypatch):
 def test_analysis_failure_before_first_step_marks_failed(sample_pdf):
     pid = _stuck_paper(sample_pdf, "queued")
     store.pdf_path(pid).unlink()  # PDF の読み込みで失敗させる
-    main._run_analysis(pid)
+    PaperService().run_analysis(pid)
     paper = store.load(pid)
     assert paper["status"] == "failed"
     assert paper["error"]
 
 
 def test_analysis_of_missing_paper_does_nothing():
-    main._run_analysis(store.new_id())  # 例外を出さない
+    PaperService().run_analysis(store.new_id())  # 例外を出さない
 
 
-def test_ask_is_rate_limited_per_paper(client, sample_pdf, monkeypatch):
-    monkeypatch.setattr(main, "_ask_limiter", RateLimiter(2, 60))
+def test_ask_is_rate_limited_per_paper(client, service, sample_pdf, monkeypatch):
+    monkeypatch.setattr(service, "ask_limiter", RateLimiter(2, 60))
     pid = _upload(client, sample_pdf).json()["id"]
     _wait_done(client, pid)
     codes = [client.post(f"/api/papers/{pid}/ask", json={"question": "q"}).status_code for _ in range(3)]
@@ -322,10 +330,10 @@ def test_ask_is_rate_limited_per_paper(client, sample_pdf, monkeypatch):
     assert client.post(f"/api/papers/{other}/ask", json={"question": "q"}).status_code == 200  # 論文ごとに数える
 
 
-def test_retry_is_rate_limited_per_paper(client, sample_pdf, monkeypatch):
+def test_retry_is_rate_limited_per_paper(client, service, sample_pdf, monkeypatch):
     started = []
-    monkeypatch.setattr(main, "_start", started.append)
-    monkeypatch.setattr(main, "_retry_limiter", RateLimiter(1, 60))
+    monkeypatch.setattr(service, "_starter", started.append)
+    monkeypatch.setattr(service, "retry_limiter", RateLimiter(1, 60))
     pid = _stuck_paper(sample_pdf, "failed")
     assert client.post(f"/api/papers/{pid}/retry").status_code == 200
     store.update(pid, status="failed")
@@ -333,3 +341,11 @@ def test_retry_is_rate_limited_per_paper(client, sample_pdf, monkeypatch):
     assert res.status_code == 429
     assert "再実行" in res.json()["detail"]
     assert started == [pid]
+
+
+def test_get_pdf_redirects_when_storage_gives_url(client, sample_pdf, monkeypatch):
+    pid = _upload(client, sample_pdf).json()["id"]
+    monkeypatch.setattr(store, "pdf_url", lambda _pid: "https://storage.example/signed")
+    res = client.get(f"/api/papers/{pid}/pdf", follow_redirects=False)
+    assert res.status_code in (302, 307)
+    assert res.headers["location"] == "https://storage.example/signed"
