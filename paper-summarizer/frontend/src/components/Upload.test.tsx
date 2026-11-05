@@ -100,6 +100,13 @@ describe('Upload', () => {
     expect(card.querySelectorAll('.paper-card-meta > span')).toHaveLength(1)
   })
 
+  it('tells the student what to load and to check the AI against the paper', () => {
+    vi.spyOn(api, 'list').mockResolvedValue([])
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    expect(screen.getByRole('heading', { level: 1, name: '英語の論文を1本、PDFで読み込んでください' })).toBeVisible()
+    expect(screen.getByText(/AIの解説は間違えることがあるので、ページを開いて原文で確かめながら読んでください。/)).toBeInTheDocument()
+  })
+
   it('puts the drop zone hint and a real button in the drop zone', () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     render(<Upload health={health} onOpen={vi.fn()} />)

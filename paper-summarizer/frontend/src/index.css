@@ -505,12 +505,16 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   padding: 4px 6px 28px;
 }
 .hero h1 {
-  font-size: 2.4rem;
+  font-size: 2rem;
   margin: 0 0 10px;
+}
+.hero h1 span {
+  display: inline-block;
 }
 .hero p {
   margin: 0;
   max-width: 38em;
+  text-wrap: pretty;
   font-size: 1rem;
   line-height: 1.8;
 }
@@ -1692,7 +1696,7 @@ body.pane-resizing .workspace > :not(.pane-divider) {
     gap: 22px;
   }
   .hero h1 {
-    font-size: 1.6rem;
+    font-size: 1.45rem;
   }
   .dropzone {
     min-height: 200px;

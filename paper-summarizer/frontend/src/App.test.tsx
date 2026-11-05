@@ -28,7 +28,7 @@ describe('App', () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     render(<App />)
     expect(await screen.findByText('デモモード（サンプルデータ）')).toBeInTheDocument()
-    expect(screen.getByText('論文のアップロード')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: '英語の論文を1本、PDFで読み込んでください' })).toBeInTheDocument()
   })
 
   it('shows a banner when the backend is unreachable', async () => {

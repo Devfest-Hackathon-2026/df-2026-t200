@@ -98,7 +98,16 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
   return (
     <div className="upload-page">
       <div className="upload-main">
-        <h1 className="sr-only">論文のアップロード</h1>
+        <div className="hero">
+          {/* 折り返すときは「、」の後で改行する */}
+          <h1>
+            <span>英語の論文を1本、</span>
+            <span>PDFで読み込んでください</span>
+          </h1>
+          <p>
+            前提知識の整理、手法の流れ、批判的に読むための問いを、論文のページを添えて作ります。AIの解説は間違えることがあるので、ページを開いて原文で確かめながら読んでください。
+          </p>
+        </div>
 
         <div className="level" role="radiogroup" aria-labelledby="level-label">
           <span className="level-label" id="level-label">
