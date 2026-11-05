@@ -59,6 +59,36 @@ describe('Step1Map', () => {
     render(<Step1Map data={step1} paperId="p2" />)
   })
 
+  it('stacks the map vertically when the explanation pane is too narrow for the wide map', () => {
+    // 広い画面でも、境目を動かして解説側を狭めると横並びの図が入らなくなる
+    let onResize = () => {}
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          onResize = cb
+        }
+        observe() {}
+        disconnect() {}
+      },
+    )
+    const { container } = render(<Step1Map data={step1} paperId="p1" />)
+    const box = container.querySelector<HTMLElement>('.graph-scroll')!
+    const items = () => [...container.querySelectorAll<HTMLElement>('.graph-nodes li')]
+    let width = 2000
+    Object.defineProperty(box, 'clientWidth', { get: () => width, configurable: true })
+    act(() => onResize())
+    expect(items()[0].style.width).not.toBe(`${NARROW_NODE_W}px`)
+    width = 340
+    act(() => onResize())
+    expect(items()[0].style.width).toBe(`${NARROW_NODE_W}px`)
+    // 非表示（幅 0）のときは判定を変えない
+    width = 0
+    act(() => onResize())
+    expect(items()[0].style.width).toBe(`${NARROW_NODE_W}px`)
+    vi.unstubAllGlobals()
+  })
+
   it('stacks the map vertically on narrow screens and follows width changes', () => {
     let listener = () => {}
     const mq = { matches: true, addEventListener: (_: string, l: () => void) => (listener = l), removeEventListener: vi.fn() }

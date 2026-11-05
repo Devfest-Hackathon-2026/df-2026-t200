@@ -281,14 +281,72 @@ h3 {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* --split は PDF の幅（App.tsx で境目の位置から設定）。狭くしすぎても両方が読める幅は残す */
+  grid-template-columns: minmax(240px, calc(var(--split, 50%) - 6px)) 12px minmax(380px, 1fr);
 }
 .pane-left {
   min-height: 0;
-  border-right: 2px solid #e4e6e8;
+  min-width: 0;
+}
+/* PDF と解説の境目。普段は細い線、触れると青い線とつまみが出る */
+.pane-divider {
+  position: relative;
+  z-index: 2;
+  /* 見た目の線は細いまま、つかめる幅を解説側へ 12px 広げて 24px にする（PDF 側のスクロールバーに重ねない） */
+  margin: 0 -12px 0 0;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.pane-divider::before {
+  content: '';
+  position: absolute;
+  inset: 0 17px 0 5px;
+  background: #e4e6e8;
+  transition:
+    background-color 120ms,
+    inset 120ms;
+}
+.pane-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 6px;
+  height: 36px;
+  margin: -18px 0 0 -3px;
+  border-radius: 3px;
+  background: var(--blue);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.pane-divider:hover::before,
+.pane-divider:focus-visible::before,
+body.pane-resizing .pane-divider::before {
+  inset: 0 16px 0 4px;
+  background: var(--blue);
+}
+.pane-divider:hover::after,
+.pane-divider:focus-visible::after,
+body.pane-resizing .pane-divider::after {
+  opacity: 1;
+}
+.pane-divider:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--blue-soft);
+}
+/* ドラッグ中は文字が選択されたり、PDF がカーソルを奪ったりしないようにする */
+body.pane-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.pane-resizing .workspace > :not(.pane-divider) {
+  pointer-events: none;
 }
 .pane-right {
   min-height: 0;
+  min-width: 0;
+  /* 境目を動かすと幅が変わるので、段組みは画面幅ではなくこのペインの幅で切り替える */
+  container: explain / inline-size;
   display: flex;
   flex-direction: column;
 }
@@ -1390,6 +1448,39 @@ h3 {
   margin: 0;
 }
 
+/* 解説ペインが狭いとき（境目で PDF を広げたときなど）: 3行要約と「論文の記述／AIの指摘」を1列にする */
+@container explain (max-width: 600px) {
+  .summary3 {
+    grid-template-columns: 1fr;
+  }
+  .graph-node {
+    font-family: var(--font-label);
+    letter-spacing: 0;
+    font-size: 0.85rem;
+    padding: 0 8px;
+  }
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .column-divider {
+    display: none;
+  }
+  .column.paper,
+  .column.ai_inference {
+    padding: 0;
+  }
+  .column.ai_inference {
+    border-top: 2px dashed var(--frame);
+    padding-top: 16px;
+  }
+  .tab-title {
+    font-size: 0.6875rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+}
+
 /* 狭い画面: PDF と解説を上下に並べず、タブで切り替える（App.tsx の NARROW_QUERY と同じ幅） */
 @media (max-width: 900px) {
   .wide-only,
@@ -1453,6 +1544,9 @@ h3 {
   }
   .workspace.show-pdf .pane-right,
   .workspace.show-explain .pane-left {
+    display: none;
+  }
+  .pane-divider {
     display: none;
   }
   .pane-left {
