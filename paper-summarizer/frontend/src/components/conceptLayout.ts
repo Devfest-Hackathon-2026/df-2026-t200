@@ -1,9 +1,9 @@
 import type { Concept } from '../api'
 
-export const NODE_W = 168
-export const NODE_H = 48
+export const NODE_W = 176
+export const NODE_H = 58
 export const COL_GAP = 44
-export const ROW_GAP = 14
+export const ROW_GAP = 18
 export const PAD = 12
 
 export type ConceptLayout = { pos: Map<string, { x: number; y: number }>; width: number; height: number }
@@ -37,4 +37,16 @@ export function layoutConcepts(concepts: Concept[]): ConceptLayout {
     width: PAD * 2 + span(cols.length, NODE_W, COL_GAP),
     height: PAD * 2 + span(rows, NODE_H, ROW_GAP),
   }
+}
+
+/** マーカーで描いたような楕円（書き終わりが少し重なる）。中心 (cx, cy)、半径 rx, ry */
+export function ovalPath(cx: number, cy: number, rx: number, ry: number): string {
+  const x = (v: number) => (cx + (v / 78) * rx).toFixed(1)
+  const y = (v: number) => (cy + (v / 28) * ry).toFixed(1)
+  return (
+    `M${x(-75)},${y(-3)} C${x(-77)},${y(-17)} ${x(-43)},${y(-29)} ${x(2)},${y(-27)} ` +
+    `C${x(43)},${y(-27.5)} ${x(80)},${y(-14)} ${x(78)},${y(1)} ` +
+    `C${x(77)},${y(17)} ${x(39)},${y(29.5)} ${x(-2)},${y(28)} ` +
+    `C${x(-43)},${y(27)} ${x(-79)},${y(13)} ${x(-77)},${y(-5)} L${x(-69)},${y(-17)}`
+  )
 }

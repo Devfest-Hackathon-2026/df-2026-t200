@@ -2,6 +2,7 @@ import 'pdfjs-dist/web/pdf_viewer.css'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { clearHighlights } from '../pdf/pdfText'
 import { usePdfDocument } from '../pdf/usePdfDocument'
+import { scrollBehavior } from '../motion'
 import { PageView, type Target } from './PageView'
 
 export type PdfViewerHandle = { jumpTo: (page: number, quote?: string) => void; clearHighlight: () => void }
@@ -72,7 +73,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function P
         nonce.current += 1
         if (settledRef.current) {
           pending.current = null
-          scrollToPage(page, 'smooth')
+          scrollToPage(page, scrollBehavior())
         } else {
           pending.current = { page, nonce: nonce.current }
         }
@@ -87,10 +88,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function P
     [],
   )
 
-  if (error) return <div className="pdf-error">PDF を表示できませんでした: {error}</div>
+  if (error)
+    return (
+      <div className="pdf-error" role="alert">
+        PDFを表示できませんでした（{error}）。ページを再読み込みしてください。
+      </div>
+    )
   return (
     <div className="pdf-scroll" ref={scrollRef}>
-      {!doc && <div className="muted pad">PDF を読み込み中…</div>}
+      {!doc && <div className="muted pad">PDFを読み込んでいます…</div>}
       {doc &&
         Array.from({ length: doc.numPages }, (_, i) => (
           <PageView
