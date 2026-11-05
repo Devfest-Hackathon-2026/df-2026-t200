@@ -33,38 +33,51 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
     jumpToStage(jump, data.stages[k])
   }
 
-  if (!stage) return <p className="muted">ウォークスルーを生成できませんでした。</p>
+  if (!stage) return <p className="muted">手法の段階を取り出せませんでした。</p>
   return (
     <div className="step">
-      <section className="card">
+      <section className="block">
         <h2>手法の流れ</h2>
-        <p>{data.overview}</p>
+        <p className="lead">{data.overview}</p>
         <ol className="stepper">
           {data.stages.map((s, k) => (
             <li key={k}>
-              <button type="button" className={k === i ? 'current' : k < i ? 'done' : ''} onClick={() => goTo(k)}>
+              <button
+                type="button"
+                className={k === i ? 'current' : k < i ? 'done' : ''}
+                aria-current={k === i ? 'step' : undefined}
+                onClick={() => goTo(k)}
+              >
+                {k === i && (
+                  <svg className="stage-circle" aria-hidden="true" viewBox="0 0 244 96" preserveAspectRatio="none">
+                    <path d="M3,45 C1,20 55,1 124,3 C189,2.5 246,25 244,49 C243,76 183,95.5 120,94 C55,93 -1,69 1,43 L9,19" />
+                  </svg>
+                )}
                 <span className="num">{k + 1}</span>
-                <span>{s.title}</span>
+                <span className="stage-name">{s.title}</span>
               </button>
+              {k < data.stages.length - 1 && (
+                <svg className="stage-arrow" aria-hidden="true" width="30" height="14" viewBox="0 0 30 14">
+                  <path d="M2,8 Q14,5 26,7 M26,7 l-7,-5 M26,7 l-6,6" />
+                </svg>
+              )}
             </li>
           ))}
         </ol>
       </section>
 
-      <section className="card stage">
-        <div className="row between">
-          <h2>
-            {i + 1}. {stage.title}
-          </h2>
-          <EvidenceList items={stage.evidence} />
-        </div>
+      <section className="block stage">
+        <h2 className="stage-title">
+          {i + 1}. {stage.title}
+        </h2>
         <p className="explain">{stage.explanation}</p>
+        <EvidenceList items={stage.evidence} />
 
         {stage.figures.map((f, k) => (
-          <div key={k} className="sub-card">
+          <div key={k} className="sub-block">
             <div className="row between">
-              <strong>📊 {f.label}</strong>
-              <PageChip page={f.page} label={`${f.label} を見る (p.${f.page})`} />
+              <h3>{f.label}の読み方</h3>
+              <PageChip page={f.page} label={`${f.label}をPDFで開く（p.${f.page}）`} />
             </div>
             <dl className="defs">
               <dt>何を示す図表か</dt>
@@ -75,22 +88,23 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
               <dd>{f.supports_claim}</dd>
             </dl>
             {f.referenced_at.length > 0 && (
-              <div className="small muted">
-                本文での言及: <EvidenceList items={f.referenced_at} />
+              <div className="mentions small">
+                <span className="muted">本文での言及</span> <EvidenceList items={f.referenced_at} />
               </div>
             )}
           </div>
         ))}
 
         {stage.equations.map((eq, k) => (
-          <div key={k} className="sub-card">
+          <div key={k} className="sub-block">
             <div className="row between">
-              <strong>式 {eq.label}</strong>
+              <h3>式 {eq.label}</h3>
               <PageChip page={eq.page} />
             </div>
             <Tex tex={eq.latex} block />
-            <p className="small">
-              <span className="muted">一言でいうと:</span> {eq.plain_meaning}
+            <p className="why">
+              <span className="label">式の意味</span>
+              <span>{eq.plain_meaning}</span>
             </p>
             {eq.symbols.length > 0 && (
               <table className="symbols">
@@ -101,7 +115,7 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
                         <Tex tex={s.symbol_latex} />
                       </td>
                       <td>{s.meaning}</td>
-                      <td>{s.defined_page && <PageChip page={s.defined_page} label={`定義 p.${s.defined_page}`} />}</td>
+                      <td>{s.defined_page && <PageChip page={s.defined_page} label={`定義のp.${s.defined_page}を開く`} />}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -112,13 +126,13 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
 
         <div className="row between nav">
           <button type="button" className="btn" disabled={i === 0} onClick={() => goTo(i - 1)}>
-            ← 前の段階
+            前の段階へ
           </button>
           <span className="muted small">
             {i + 1} / {data.stages.length}
           </span>
           <button type="button" className="btn primary" disabled={i === data.stages.length - 1} onClick={() => goTo(i + 1)}>
-            次の段階 →
+            次の段階へ
           </button>
         </div>
       </section>

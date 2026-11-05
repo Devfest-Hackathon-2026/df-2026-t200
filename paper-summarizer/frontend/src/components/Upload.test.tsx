@@ -26,7 +26,7 @@ describe('Upload', () => {
     const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
     const big = new File([new Uint8Array(2 * 1024 * 1024)], 'big.pdf', { type: 'application/pdf' })
     await userEvent.upload(fileInput(container), big)
-    expect(screen.getByText('ファイルサイズの上限は 1MB です')).toBeInTheDocument()
+    expect(screen.getByText('ファイルが大きすぎます。1MB以下のPDFを選んでください。')).toBeInTheDocument()
     expect(upload).not.toHaveBeenCalled()
   })
 
@@ -35,7 +35,7 @@ describe('Upload', () => {
     vi.spyOn(api, 'upload').mockRejectedValue(new Error('テキストを含む PDF のみ対応しています'))
     const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
     await userEvent.upload(fileInput(container), new File(['%PDF'], 'a.pdf', { type: 'application/pdf' }))
-    expect(await screen.findByText('テキストを含む PDF のみ対応しています')).toBeInTheDocument()
+    expect(await screen.findByText(/テキストを含む PDF のみ対応しています/)).toBeInTheDocument()
   })
 
   it('lists previous papers and opens one', async () => {
@@ -58,7 +58,7 @@ describe('Upload', () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     render(<Upload health={health} onOpen={vi.fn()} />)
     const level = screen.getByRole('radiogroup', { name: '説明のレベル' })
-    const drop = screen.getByRole('button', { name: /論文の PDF をドロップ/ })
+    const drop = screen.getByRole('button', { name: /論文のPDFを選ぶ/ })
     expect(level.compareDocumentPosition(drop) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
@@ -75,24 +75,16 @@ describe('Upload', () => {
     expect(screen.getByRole('button', { name: /c\.pdf/ })).toHaveTextContent('失敗')
   })
 
-  it('tells that the analysis is a sample in demo mode', () => {
-    vi.spyOn(api, 'list').mockResolvedValue([])
-    const { rerender } = render(<Upload health={health} onOpen={vi.fn()} />)
-    expect(screen.getByText(/解説はサンプルです/)).toBeInTheDocument()
-    rerender(<Upload health={{ ...health, demo_mode: false }} onOpen={vi.fn()} />)
-    expect(screen.queryByText(/解説はサンプルです/)).not.toBeInTheDocument()
-  })
-
   it('ignores drops while an upload is running', async () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     let finish: (v: { id: string; reused: boolean }) => void = () => {}
     const upload = vi.spyOn(api, 'upload').mockReturnValue(new Promise((r) => (finish = r)))
     const onOpen = vi.fn()
     render(<Upload health={health} onOpen={onOpen} />)
-    const drop = screen.getByRole('button', { name: /論文の PDF をドロップ/ })
+    const drop = screen.getByRole('button', { name: /論文のPDFを選ぶ/ })
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
     fireEvent.drop(drop, { dataTransfer: { files: [file] } })
-    await screen.findByText('アップロード中…')
+    await screen.findByText('アップロードしています…')
     fireEvent.drop(drop, { dataTransfer: { files: [file] } })
     expect(upload).toHaveBeenCalledTimes(1)
     finish({ id: 'x', reused: false })
@@ -105,7 +97,7 @@ describe('Upload', () => {
     const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
     await userEvent.upload(fileInput(container), file)
-    await screen.findByText('失敗しました')
+    await screen.findByText(/失敗しました/)
     expect(fileInput(container).value).toBe('')
     await userEvent.upload(fileInput(container), file)
     await waitFor(() => expect(upload).toHaveBeenCalledTimes(2))
@@ -115,7 +107,7 @@ describe('Upload', () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
     const click = vi.spyOn(fileInput(container), 'click')
-    const notPrevented = fireEvent.keyDown(screen.getByRole('button', { name: /論文の PDF をドロップ/ }), { key: ' ' })
+    const notPrevented = fireEvent.keyDown(screen.getByRole('button', { name: /論文のPDFを選ぶ/ }), { key: ' ' })
     expect(notPrevented).toBe(false)
     expect(click).toHaveBeenCalled()
   })

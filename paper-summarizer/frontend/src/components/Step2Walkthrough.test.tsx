@@ -44,7 +44,7 @@ describe('Step2Walkthrough', () => {
       </JumpContext.Provider>,
     )
     jump.mockClear() // 開いたときの強調は別のテストで確かめる
-    await userEvent.click(screen.getByRole('button', { name: '次の段階 →' }))
+    await userEvent.click(screen.getByRole('button', { name: '次の段階へ' }))
     // 段階2には根拠も図表もないので移動しない
     expect(jump).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: /入力の埋め込み/ }))
@@ -59,14 +59,14 @@ describe('Step2Walkthrough', () => {
         <Step2Walkthrough data={data} />
       </JumpContext.Provider>,
     )
-    await userEvent.click(screen.getByRole('button', { name: '次の段階 →' }))
+    await userEvent.click(screen.getByRole('button', { name: '次の段階へ' }))
     expect(jump).toHaveBeenCalledWith(3)
   })
 
   it('moves between stages with next/prev buttons', async () => {
     render(<Step2Walkthrough data={step2} />)
-    const prev = screen.getByRole('button', { name: '← 前の段階' })
-    const next = screen.getByRole('button', { name: '次の段階 →' })
+    const prev = screen.getByRole('button', { name: '前の段階へ' })
+    const next = screen.getByRole('button', { name: '次の段階へ' })
     expect(prev).toBeDisabled()
     await userEvent.click(next)
     expect(screen.getByText('確率を出す')).toBeInTheDocument()
@@ -77,6 +77,6 @@ describe('Step2Walkthrough', () => {
 
   it('shows a message when there are no stages', () => {
     render(<Step2Walkthrough data={{ overview: '', stages: [] }} />)
-    expect(screen.getByText('ウォークスルーを生成できませんでした。')).toBeInTheDocument()
+    expect(screen.getByText('手法の段階を取り出せませんでした。')).toBeInTheDocument()
   })
 })

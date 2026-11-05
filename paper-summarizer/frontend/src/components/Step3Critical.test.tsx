@@ -8,7 +8,7 @@ describe('Step3Critical', () => {
   it('hides the analysis until the student writes their thoughts', async () => {
     render(<Step3Critical data={step3} paperId="p1" />)
     expect(screen.queryByText('実装が単純')).not.toBeInTheDocument()
-    const reveal = screen.getByRole('button', { name: '考えを書いたので解説を見る' })
+    const reveal = screen.getByRole('button', { name: '解説を見る' })
     expect(reveal).toBeDisabled()
     await userEvent.type(screen.getByLabelText('あなたの考え'), '実験が少ない')
     await waitFor(() => expect(JSON.parse(localStorage.getItem('thoughts:p1')!)).toBe('実験が少ない'))
@@ -18,11 +18,11 @@ describe('Step3Critical', () => {
 
   it('labels paper claims and AI inferences separately', async () => {
     render(<Step3Critical data={step3} paperId="p1" />)
-    await userEvent.click(screen.getByRole('button', { name: '書かずに見る' }))
+    await userEvent.click(screen.getByRole('button', { name: '書かずに解説を見る' }))
     const paperItem = screen.getByText('実装が単純').closest('li')!
     const aiItem = screen.getByText('計算量が大きい').closest('li')!
     expect(paperItem).toHaveTextContent('論文の記述')
-    expect(aiItem).toHaveTextContent('AIの指摘・要検証')
+    expect(aiItem).toHaveTextContent('AIの指摘（要検証）')
     expect(screen.getByText('RNN')).toBeInTheDocument()
     expect(screen.getByText('弱点は？')).toBeInTheDocument()
   })
@@ -31,7 +31,7 @@ describe('Step3Critical', () => {
     const scroll = vi.mocked(Element.prototype.scrollIntoView)
     scroll.mockClear()
     render(<Step3Critical data={step3} paperId="p1" />)
-    await userEvent.click(screen.getByRole('button', { name: '書かずに見る' }))
+    await userEvent.click(screen.getByRole('button', { name: '書かずに解説を見る' }))
     expect(scroll).toHaveBeenCalled()
     expect(scroll.mock.contexts[0]).toBe(document.querySelector('.reveal-start'))
   })

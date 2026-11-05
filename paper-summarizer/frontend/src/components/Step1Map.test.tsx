@@ -9,7 +9,6 @@ describe('Step1Map', () => {
     render(<Step1Map data={step1} paperId="p1" />)
     expect(screen.getByText('問題A')).toBeInTheDocument()
     expect(screen.getByText('全体像をつかむ')).toBeInTheDocument()
-    expect(screen.getByText(/未チェック 3 個/)).toBeInTheDocument()
   })
 
   it('reveals description only for unknown concepts and persists the choice', async () => {
@@ -41,13 +40,12 @@ describe('Step1Map', () => {
     expect(attention).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('本論文の中心')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '知らない' }))
-    expect(screen.getByRole('button', { name: /Attention.*補足あり/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Attention.*知らない/ })).toBeInTheDocument()
   })
 
   it('does not crash when "null" is stored', () => {
     localStorage.setItem('knowledge:p3', 'null')
     render(<Step1Map data={step1} paperId="p3" />)
-    expect(screen.getByText(/未チェック 3 個/)).toBeInTheDocument()
   })
 
   it('renders an empty map without a negative size', () => {
@@ -58,6 +56,5 @@ describe('Step1Map', () => {
   it('restores saved knowledge and tolerates broken storage', () => {
     localStorage.setItem('knowledge:p2', '{broken')
     render(<Step1Map data={step1} paperId="p2" />)
-    expect(screen.getByText(/未チェック 3 個/)).toBeInTheDocument()
   })
 })

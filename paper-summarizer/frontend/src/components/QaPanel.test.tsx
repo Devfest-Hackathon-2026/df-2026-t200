@@ -16,7 +16,7 @@ describe('QaPanel', () => {
     expect(ask).toHaveBeenCalledWith('pid', '弱点は？', 2)
     expect(await screen.findByText('論文の4ページに書かれています')).toBeInTheDocument()
     expect(screen.getByText('論文に記載')).toBeInTheDocument()
-    expect(screen.getByText('確信度: 高')).toBeInTheDocument()
+    expect(screen.getByText('確信度 高')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('回答が届きました')
   })
 
@@ -40,7 +40,7 @@ describe('QaPanel', () => {
   it('sends a suggested question with one click', async () => {
     const ask = vi.spyOn(api, 'ask').mockResolvedValue({ messages: [user, answer] })
     render(<QaPanel paperId="pid" initial={[]} currentStep={1} />)
-    await userEvent.click(screen.getByRole('button', { name: /根拠付きQ&A/ }))
+    await userEvent.click(screen.getByRole('button', { name: /質問と回答/ }))
     await userEvent.click(screen.getByRole('button', { name: 'この手法の弱点は？' }))
     expect(ask).toHaveBeenCalledWith('pid', 'この手法の弱点は？', 1)
   })
@@ -56,7 +56,7 @@ describe('QaPanel', () => {
 
   it('can be expanded and collapsed again', async () => {
     render(<QaPanel paperId="pid" initial={[answer]} currentStep={1} />)
-    const toggle = screen.getByRole('button', { name: /根拠付きQ&A/ })
+    const toggle = screen.getByRole('button', { name: /質問と回答/ })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     await userEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
