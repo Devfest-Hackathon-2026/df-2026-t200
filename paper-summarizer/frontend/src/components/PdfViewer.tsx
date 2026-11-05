@@ -7,8 +7,8 @@ import { PageView, type Target } from './PageView'
 
 export type PdfViewerHandle = { jumpTo: (page: number, quote?: string) => void; clearHighlight: () => void }
 
-/** ページの表示幅（.pdf-scroll の幅から左右の余白を引く） */
-const pageWidth = (paneWidth: number) => Math.max(280, Math.floor(paneWidth - 32))
+/** ページの表示幅（.pdf-scroll の幅から左右の余白 8px ずつを引く。狭い画面の 6px より大きく取ってはみ出さないようにする） */
+const pageWidth = (paneWidth: number) => Math.max(240, Math.floor(paneWidth - 16))
 
 export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function PdfViewer({ url }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null)

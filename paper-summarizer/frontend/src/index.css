@@ -5,9 +5,7 @@
  * 要素は傾けない。手書きらしさは SVG の線だけで出す。
  */
 :root {
-  --wall: #dcdfe2;
   --frame: #c9cccf;
-  --frame-edge: #a9aeb3;
   --board: #fbfbf8;
   --sheet: #ffffff;
   --ink: #24282c;
@@ -30,7 +28,6 @@
   font-family: var(--font-ui);
   font-size: 15px;
   color: var(--ink);
-  background: var(--wall);
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
 }
@@ -52,12 +49,11 @@ body,
   height: 100dvh;
 }
 body {
-  background: var(--wall);
+  background: var(--board);
 }
 #root {
   display: flex;
   flex-direction: column;
-  padding: 12px 16px;
 }
 button,
 input,
@@ -169,18 +165,13 @@ h3 {
   flex: none;
 }
 
-/* ---------- ボードと枠 ---------- */
+/* ---------- 板面（画面いっぱい） ---------- */
 .app {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--board);
-  border: 10px solid var(--frame);
-  border-radius: 6px;
-  box-shadow:
-    inset 0 0 0 1px #b7bbbf,
-    0 2px 0 var(--frame-edge);
   overflow: hidden;
 }
 /* マグネット（状態の目印。意味は必ず文字でも書く） */
@@ -231,8 +222,8 @@ h3 {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 8px 20px;
-  min-height: 60px;
+  padding: 2px 16px;
+  min-height: 48px;
   border-bottom: 2px solid #e4e6e8;
 }
 .brand {
@@ -250,7 +241,7 @@ h3 {
 .brand-name {
   font-family: var(--font-hand);
   font-weight: 600;
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   line-height: 1.2;
 }
 .brand-sub {
@@ -422,7 +413,7 @@ h3 {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 40px 32px 32px;
+  padding: 20px 16px;
 }
 .upload-main {
   min-width: 0;
@@ -591,11 +582,11 @@ h3 {
 .pdf-scroll {
   height: 100%;
   overflow: auto;
-  padding: 24px 16px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
+  gap: 10px;
 }
 .pdf-page {
   position: relative;
@@ -607,11 +598,11 @@ h3 {
   content: '';
   position: absolute;
   z-index: 3;
-  top: -8px;
+  top: 4px;
   left: 50%;
-  margin-left: -8px;
-  width: 16px;
-  height: 16px;
+  margin-left: -7px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--blue);
   box-shadow:
@@ -624,9 +615,10 @@ h3 {
 }
 .pdf-page-num {
   position: absolute;
-  right: 0;
-  top: -2px;
-  transform: translateY(-100%);
+  z-index: 3;
+  right: 6px;
+  top: 2px;
+  pointer-events: none;
   font-size: 0.75rem;
   color: var(--ink-2);
 }
@@ -653,7 +645,7 @@ h3 {
 
 /* ---------- 右ペイン ---------- */
 .paper-title {
-  padding: 12px 20px 4px;
+  padding: 6px 16px 0;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -676,7 +668,7 @@ h3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  padding: 6px 20px 10px;
+  padding: 4px 16px 6px;
   border-bottom: 2px solid #e4e6e8;
 }
 .tab {
@@ -737,18 +729,13 @@ h3 {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 20px 28px;
+  padding: 12px 16px 20px;
 }
+/* 区切りの線や枠は付けず、間隔だけで分ける */
 .step {
   display: flex;
   flex-direction: column;
-  gap: 26px;
-}
-/* 区切りは枠で囲まず、破線を1本引くだけにする */
-.block + .block,
-.columns + .block {
-  border-top: 2px dashed var(--frame);
-  padding-top: 18px;
+  gap: 22px;
 }
 .explain {
   margin: 4px 0 10px;
@@ -899,8 +886,8 @@ h3 {
   border-radius: 3px;
 }
 .concept-detail {
-  margin-top: 16px;
-  padding: 22px 20px 16px;
+  margin-top: 12px;
+  padding: 16px 16px 10px;
   max-width: 560px;
 }
 .concept-name {
@@ -1065,9 +1052,7 @@ h3 {
   margin-bottom: 4px;
 }
 .sub-block {
-  margin-top: 18px;
-  border-top: 2px dashed var(--frame);
-  padding-top: 12px;
+  margin-top: 16px;
 }
 .sub-block h3 {
   margin: 0;
@@ -1116,9 +1101,7 @@ h3 {
   text-align: right;
 }
 .nav {
-  margin-top: 22px;
-  border-top: 2px solid #e4e6e8;
-  padding-top: 12px;
+  margin-top: 16px;
 }
 
 /* step 3 */
@@ -1390,13 +1373,6 @@ h3 {
 
 /* 狭い画面: PDF と解説を上下に並べず、タブで切り替える（App.tsx の NARROW_QUERY と同じ幅） */
 @media (max-width: 900px) {
-  #root {
-    padding: 0;
-  }
-  .app {
-    border-width: 4px;
-    border-radius: 0;
-  }
   .wide-only,
   .brand-sub {
     display: none;
@@ -1464,7 +1440,8 @@ h3 {
     border-right: none;
   }
   .pdf-scroll {
-    padding: 16px 8px;
+    padding: 6px;
+    gap: 8px;
   }
   .paper-title {
     padding: 8px 12px 2px;
@@ -1539,7 +1516,7 @@ h3 {
     display: none;
   }
   .upload-page {
-    padding: 24px 16px;
+    padding: 12px;
   }
   .hero h1 {
     font-size: 1.6rem;
