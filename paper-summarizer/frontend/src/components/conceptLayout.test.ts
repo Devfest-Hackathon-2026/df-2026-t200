@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Concept } from '../api'
 import { step1 } from '../test/fixtures'
-import { COL_GAP, NODE_H, NODE_W, PAD, ROW_GAP, layoutConcepts } from './conceptLayout'
+import { COL_GAP, NARROW_NODE_W, NODE_H, NODE_W, PAD, ROW_GAP, edgePaths, layoutConcepts, ovalPath } from './conceptLayout'
 
 const concept = (id: string, depends_on: string[] = []): Concept => ({
   id,
@@ -39,5 +39,71 @@ describe('layoutConcepts', () => {
     const { pos } = layoutConcepts([concept('a', ['b']), concept('b', ['a']), concept('c', ['missing'])])
     expect(pos.size).toBe(3)
     expect(pos.get('c')!.x).toBe(PAD)
+  })
+
+  it('orders each column so that arrows do not cross', () => {
+    // 入力順のままだと a→d と b→c が交差する。並べ替えると c と d が入れ替わる
+    const concepts = [concept('a'), concept('b'), concept('c', ['b']), concept('d', ['a'])]
+    const { pos } = layoutConcepts(concepts)
+    expect(pos.get('a')!.y).toBeLessThan(pos.get('b')!.y)
+    expect(pos.get('d')!.y).toBeLessThan(pos.get('c')!.y)
+  })
+
+  it('stacks layers top to bottom and fits two concepts per row on narrow screens', () => {
+    const concepts = [concept('a'), concept('b'), concept('c'), concept('d', ['a', 'b', 'c'])]
+    const { pos, width, nodeW, vertical } = layoutConcepts(concepts, true)
+    expect(vertical).toBe(true)
+    expect(nodeW).toBe(NARROW_NODE_W)
+    for (const p of pos.values()) expect(p.x + nodeW).toBeLessThanOrEqual(width - PAD)
+    expect(pos.get('c')!.y).toBeGreaterThan(pos.get('a')!.y)
+    expect(pos.get('d')!.y).toBeGreaterThan(pos.get('c')!.y)
+  })
+})
+
+describe('edgePaths', () => {
+  const end = (d: string) =>
+    d
+      .match(/(-?[\d.]+),(-?[\d.]+)$/)!
+      .slice(1)
+      .map(Number)
+  const start = (d: string) =>
+    d
+      .match(/^M(-?[\d.]+),(-?[\d.]+)/)!
+      .slice(1)
+      .map(Number)
+
+  it('starts and ends each arrow on the ellipse and never shares an endpoint', () => {
+    const concepts = [concept('a'), concept('b'), concept('c', ['a', 'b']), concept('d', ['a'])]
+    const layout = layoutConcepts(concepts)
+    const edges = edgePaths(concepts, layout)
+    expect(edges).toHaveLength(3)
+    const onEllipse = (id: string, [x, y]: number[]) => {
+      const p = layout.pos.get(id)!
+      const rx = layout.nodeW / 2 - 3
+      const ry = layout.nodeH / 2 - 3
+      return ((x - p.x - layout.nodeW / 2) / rx) ** 2 + ((y - p.y - layout.nodeH / 2) / ry) ** 2
+    }
+    for (const e of edges) {
+      expect(onEllipse(e.from, start(e.d))).toBeCloseTo(1, 1)
+      expect(onEllipse(e.to, end(e.d))).toBeCloseTo(1, 1)
+    }
+    const starts = edges.filter((e) => e.from === 'a').map((e) => start(e.d).join())
+    expect(new Set(starts).size).toBe(2)
+    const ends = edges.filter((e) => e.to === 'c').map((e) => end(e.d).join())
+    expect(new Set(ends).size).toBe(2)
+  })
+
+  it('runs downward on narrow screens', () => {
+    const concepts = [concept('a'), concept('b', ['a'])]
+    const [e] = edgePaths(concepts, layoutConcepts(concepts, true))
+    expect(end(e.d)[1]).toBeGreaterThan(start(e.d)[1])
+  })
+})
+
+describe('ovalPath', () => {
+  it('is a closed path without an overshooting tail', () => {
+    const d = ovalPath(50, 20, 40, 15)
+    expect(d.endsWith('Z')).toBe(true)
+    expect(d).not.toContain('L')
   })
 })

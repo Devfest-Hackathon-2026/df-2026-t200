@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Step1 } from '../api'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { PageChip } from '../jump'
-import { NODE_H, NODE_W, layoutConcepts, ovalPath } from './conceptLayout'
+import { edgePaths, layoutConcepts, ovalPath } from './conceptLayout'
 
 type Knowledge = Record<string, 'known' | 'unknown'>
 
@@ -12,7 +12,11 @@ const isKnowledge = (v: unknown): v is Knowledge =>
 export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
   const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
   const [selected, setSelected] = useState<string | null>(data.concepts[0]?.id ?? null)
-  const { pos, width, height } = useMemo(() => layoutConcepts(data.concepts), [data.concepts])
+  const layout = useMemo(() => layoutConcepts(data.concepts), [data.concepts])
+  const edges = useMemo(() => edgePaths(data.concepts, layout), [data.concepts, layout])
+  const { pos, width, height, nodeW, nodeH } = layout
+  // 選んだ概念につながる矢印は濃く、最後に描いて上に出す。矢印は楕円の後に描き、矢じりが楕円に隠れないようにする
+  const isActive = (e: { from: string; to: string }) => selected === e.from || selected === e.to
   const sel = data.concepts.find((c) => c.id === selected)
   const unknown = data.concepts.filter((c) => knowledge[c.id] === 'unknown')
   const set = (id: string, v: 'known' | 'unknown') => setKnowledge((k) => ({ ...k, [id]: v }))
@@ -41,18 +45,21 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
           <div className="graph-canvas" style={{ width, height }}>
             <svg width={width} height={height} aria-hidden="true" focusable="false">
               <defs>
-                <marker
-                  id="pm-arrow"
-                  viewBox="0 0 12 12"
-                  refX="10"
-                  refY="6"
-                  markerWidth="11"
-                  markerHeight="11"
-                  markerUnits="userSpaceOnUse"
-                  orient="auto"
-                >
-                  <path d="M1.5 1.5L10 6L1.5 10.5" className="graph-arrow" />
-                </marker>
+                {['', '-active'].map((suffix) => (
+                  <marker
+                    key={suffix}
+                    id={`pm-arrow${suffix}`}
+                    viewBox="0 0 10 10"
+                    refX="9.5"
+                    refY="5"
+                    markerWidth="7"
+                    markerHeight="7"
+                    markerUnits="userSpaceOnUse"
+                    orient="auto"
+                  >
+                    <path d="M0.5 0.5L9.5 5L0.5 9.5z" className={`graph-arrow${suffix}`} />
+                  </marker>
+                ))}
               </defs>
               {data.concepts.map((c) => {
                 const p = pos.get(c.id)!
@@ -60,41 +67,26 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
                 return (
                   <path
                     key={c.id}
-                    d={ovalPath(p.x + NODE_W / 2, p.y + NODE_H / 2, NODE_W / 2 - 3, NODE_H / 2 - 3)}
+                    d={ovalPath(p.x + nodeW / 2, p.y + nodeH / 2, nodeW / 2 - 3, nodeH / 2 - 3)}
                     className={`graph-oval ${k ?? ''} ${selected === c.id ? 'selected' : ''}`}
                   />
                 )
               })}
-              {data.concepts.flatMap((c) =>
-                c.depends_on
-                  .filter((d) => pos.has(d))
-                  .map((d) => {
-                    const a = pos.get(d)!
-                    const b = pos.get(c.id)!
-                    const x1 = a.x + NODE_W + 2
-                    const y1 = a.y + NODE_H / 2
-                    const x2 = b.x - 2
-                    const y2 = b.y + NODE_H / 2
-                    // 手描きらしく、直線でも少しだけたわませる
-                    const mx = (x1 + x2) / 2
-                    const my = (y1 + y2) / 2 + (y1 === y2 ? 4 : 0)
-                    return (
-                      <path
-                        key={`${d}-${c.id}`}
-                        d={`M${x1} ${y1}Q${mx} ${y1} ${mx} ${my}T${x2} ${y2}`}
-                        className={`graph-edge ${selected === c.id || selected === d ? 'active' : ''}`}
-                        markerEnd="url(#pm-arrow)"
-                      />
-                    )
-                  }),
-              )}
+              {[...edges.filter((e) => !isActive(e)), ...edges.filter(isActive)].map((e) => (
+                <path
+                  key={`${e.from}-${e.to}`}
+                  d={e.d}
+                  className={`graph-edge ${isActive(e) ? 'active' : ''}`}
+                  markerEnd={`url(#pm-arrow${isActive(e) ? '-active' : ''})`}
+                />
+              ))}
             </svg>
             <ul className="graph-nodes" aria-label="前提知識の概念">
               {data.concepts.map((c) => {
                 const p = pos.get(c.id)!
                 const k = knowledge[c.id]
                 return (
-                  <li key={c.id} style={{ left: p.x, top: p.y, width: NODE_W, height: NODE_H }}>
+                  <li key={c.id} style={{ left: p.x, top: p.y, width: nodeW, height: nodeH }}>
                     <button
                       type="button"
                       className={`graph-node ${k ?? ''} ${selected === c.id ? 'selected' : ''}`}

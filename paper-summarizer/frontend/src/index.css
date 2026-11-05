@@ -830,21 +830,19 @@ h3 {
 }
 .graph-edge {
   fill: none;
-  stroke: var(--blue);
+  stroke: #8fa9dc;
   stroke-width: 2;
   stroke-linecap: round;
-  opacity: 0.55;
 }
 .graph-edge.active {
-  stroke-width: 3;
-  opacity: 1;
+  stroke: var(--blue);
+  stroke-width: 2.6;
 }
 .graph-arrow {
-  fill: none;
-  stroke: var(--blue);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: #8fa9dc;
+}
+.graph-arrow-active {
+  fill: var(--blue);
 }
 .graph-nodes {
   list-style: none;
