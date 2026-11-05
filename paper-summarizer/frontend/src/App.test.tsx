@@ -160,6 +160,36 @@ describe('App', () => {
     expect(container.querySelector('.workspace')).toHaveClass('show-explain')
   })
 
+  it('lets the student resize the panes and remembers the width', async () => {
+    localStorage.setItem('pane-split', '40')
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    const { container, unmount } = render(<App />)
+    await screen.findByText('問題A')
+    const workspace = container.querySelector<HTMLElement>('.workspace')!
+    const sep = screen.getByRole('separator', { name: 'PDFと解説の幅' })
+    expect(sep).toHaveAttribute('aria-valuenow', '40')
+    expect(workspace.style.getPropertyValue('--split')).toBe('40%')
+    sep.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(workspace.style.getPropertyValue('--split')).toBe('42%')
+    unmount()
+    expect(JSON.parse(localStorage.getItem('pane-split')!)).toBe(42)
+    localStorage.removeItem('pane-split')
+  })
+
+  it('falls back to an even split when the saved width is out of range', async () => {
+    localStorage.setItem('pane-split', '5')
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    render(<App />)
+    await screen.findByText('問題A')
+    expect(screen.getByRole('separator', { name: 'PDFと解説の幅' })).toHaveAttribute('aria-valuenow', '50')
+    localStorage.removeItem('pane-split')
+  })
+
   it('keeps the app usable when one step has a broken result', async () => {
     window.location.hash = `#/paper/${paper.id}`
     vi.spyOn(console, 'error').mockImplementation(() => {})

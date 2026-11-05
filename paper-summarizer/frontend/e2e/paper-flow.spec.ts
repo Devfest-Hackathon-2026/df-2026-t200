@@ -98,6 +98,40 @@ test('Step content keeps at least half of the right pane on a 1440x900 screen', 
   expect(await ratio()).toBeGreaterThanOrEqual(0.5)
 })
 
+test('drags the middle bar to resize the PDF and explanation, and keeps the width after reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await page.goto('/')
+  await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+  await expect(page.locator('.pdf-page[data-page="1"]')).toBeVisible({ timeout: 20_000 })
+  const bar = page.getByRole('separator', { name: 'PDFと解説の幅' })
+  const width = (selector: string) => page.locator(selector).evaluate((el) => el.getBoundingClientRect().width)
+  const pdfBefore = await width('.pdf-page[data-page="1"]')
+
+  const box = (await bar.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(420, box.y + box.height / 2, { steps: 8 })
+  await page.mouse.up()
+  // 左は 420px 前後、右はそのぶん広がる。PDF もペインの幅に合わせて描き直される
+  expect(Math.abs((await width('.pane-left')) - 414)).toBeLessThan(12)
+  expect(await width('.pane-right')).toBeGreaterThan(900)
+  await expect.poll(() => width('.pdf-page[data-page="1"]')).toBeLessThan(pdfBefore - 100)
+
+  // 端まで寄せても、解説には読める幅が残る
+  await bar.focus()
+  await page.keyboard.press('End')
+  await expect(bar).toHaveAttribute('aria-valuenow', '75')
+  expect(await width('.pane-right')).toBeGreaterThanOrEqual(380)
+
+  await page.keyboard.press('Home')
+  await page.reload()
+  await expect(page.getByRole('separator', { name: 'PDFと解説の幅' })).toHaveAttribute('aria-valuenow', '25')
+
+  // スマホの幅ではバーを出さず、タブで切り替える
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole('separator', { name: 'PDFと解説の幅' })).toBeHidden()
+})
+
 test('fits a 390px phone screen and switches between PDF and explanation', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const noHorizontalScroll = async () => {

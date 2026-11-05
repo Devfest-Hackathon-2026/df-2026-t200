@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { Step1 } from '../api'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { PageChip } from '../jump'
@@ -19,6 +19,21 @@ function useNarrow(): boolean {
   return narrow
 }
 
+/** 要素の内側の幅。表示されていない（幅 0）間は最後に測った値のままにする。測れない環境では null */
+function useWidth(ref: RefObject<HTMLElement | null>): number | null {
+  const [width, setWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth > 0) setWidth(el.clientWidth)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+  return width
+}
+
 type Knowledge = Record<string, 'known' | 'unknown'>
 
 const isKnowledge = (v: unknown): v is Knowledge =>
@@ -28,7 +43,12 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
   const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
   const [selected, setSelected] = useState<string | null>(data.concepts[0]?.id ?? null)
   const narrow = useNarrow()
-  const layout = useMemo(() => layoutConcepts(data.concepts, narrow), [data.concepts, narrow])
+  const graphBox = useRef<HTMLDivElement>(null)
+  const available = useWidth(graphBox)
+  const wide = useMemo(() => layoutConcepts(data.concepts, false), [data.concepts])
+  // 狭い画面に加え、境目を動かして解説側が狭くなり横並びの図が入らないときも、上から下へ並べる
+  const stacked = narrow || (available != null && available < wide.width)
+  const layout = useMemo(() => (stacked ? layoutConcepts(data.concepts, true) : wide), [data.concepts, stacked, wide])
   const edges = useMemo(() => edgePaths(data.concepts, layout), [data.concepts, layout])
   const { pos, width, height, nodeW, nodeH } = layout
   // 選んだ概念につながる矢印は濃く、最後に描いて上に出す。矢印は楕円の後に描き、矢じりが楕円に隠れないようにする
@@ -56,7 +76,7 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
 
       <section className="block">
         <h2>前提知識</h2>
-        <div className="graph-scroll">
+        <div className="graph-scroll" ref={graphBox}>
           {/* SVG は線だけを描き、概念はキーボードで操作できる本物のボタンとして重ねる */}
           <div className="graph-canvas" style={{ width, height }}>
             <svg width={width} height={height} aria-hidden="true" focusable="false">
