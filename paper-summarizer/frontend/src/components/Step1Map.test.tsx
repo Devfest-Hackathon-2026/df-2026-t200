@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { step1 } from '../test/fixtures'
+import { NARROW_NODE_W } from './conceptLayout'
 import { Step1Map } from './Step1Map'
 
 describe('Step1Map', () => {
@@ -56,5 +57,19 @@ describe('Step1Map', () => {
   it('restores saved knowledge and tolerates broken storage', () => {
     localStorage.setItem('knowledge:p2', '{broken')
     render(<Step1Map data={step1} paperId="p2" />)
+  })
+
+  it('stacks the map vertically on narrow screens and follows width changes', () => {
+    let listener = () => {}
+    const mq = { matches: true, addEventListener: (_: string, l: () => void) => (listener = l), removeEventListener: vi.fn() }
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mq as unknown as MediaQueryList)
+    const { container } = render(<Step1Map data={step1} paperId="p1" />)
+    const items = () => [...container.querySelectorAll<HTMLElement>('.graph-nodes li')]
+    expect(items()[0].style.width).toBe(`${NARROW_NODE_W}px`)
+    const tops = items().map((li) => parseFloat(li.style.top))
+    expect(tops[1]).toBeGreaterThan(tops[0])
+    mq.matches = false
+    act(() => listener())
+    expect(items()[0].style.width).not.toBe(`${NARROW_NODE_W}px`)
   })
 })

@@ -806,6 +806,7 @@ h3 {
 }
 .graph-canvas {
   position: relative;
+  margin: 0 auto;
 }
 .graph-canvas svg {
   position: absolute;
@@ -1487,6 +1488,10 @@ h3 {
   }
   .summary3 {
     grid-template-columns: 1fr;
+  }
+  .graph-node {
+    font-size: 0.85rem;
+    padding: 0 8px;
   }
   .columns {
     grid-template-columns: minmax(0, 1fr);

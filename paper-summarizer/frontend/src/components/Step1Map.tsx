@@ -1,8 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Step1 } from '../api'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { PageChip } from '../jump'
 import { edgePaths, layoutConcepts, ovalPath } from './conceptLayout'
+
+/** App.tsx の NARROW_QUERY と同じ幅。狭い画面では概念を上から下へ並べ、横にはみ出さないようにする */
+const NARROW_QUERY = '(max-width: 900px)'
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia?.(NARROW_QUERY).matches ?? false)
+  useEffect(() => {
+    const mq = window.matchMedia?.(NARROW_QUERY)
+    if (!mq?.addEventListener) return
+    const onChange = () => setNarrow(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return narrow
+}
 
 type Knowledge = Record<string, 'known' | 'unknown'>
 
@@ -12,7 +27,8 @@ const isKnowledge = (v: unknown): v is Knowledge =>
 export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
   const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
   const [selected, setSelected] = useState<string | null>(data.concepts[0]?.id ?? null)
-  const layout = useMemo(() => layoutConcepts(data.concepts), [data.concepts])
+  const narrow = useNarrow()
+  const layout = useMemo(() => layoutConcepts(data.concepts, narrow), [data.concepts, narrow])
   const edges = useMemo(() => edgePaths(data.concepts, layout), [data.concepts, layout])
   const { pos, width, height, nodeW, nodeH } = layout
   // 選んだ概念につながる矢印は濃く、最後に描いて上に出す。矢印は楕円の後に描き、矢じりが楕円に隠れないようにする
