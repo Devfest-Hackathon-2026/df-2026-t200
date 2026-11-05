@@ -2,12 +2,13 @@ import 'pdfjs-dist/web/pdf_viewer.css'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { clearHighlights } from '../pdf/pdfText'
 import { usePdfDocument } from '../pdf/usePdfDocument'
+import { scrollBehavior, scrollWithin } from '../motion'
 import { PageView, type Target } from './PageView'
 
 export type PdfViewerHandle = { jumpTo: (page: number, quote?: string) => void; clearHighlight: () => void }
 
-/** ページの表示幅（.pdf-scroll の幅から左右の余白を引く） */
-const pageWidth = (paneWidth: number) => Math.max(280, Math.floor(paneWidth - 32))
+/** ページの表示幅（.pdf-scroll の幅から左右の余白 8px ずつを引く。狭い画面の 6px より大きく取ってはみ出さないようにする） */
+const pageWidth = (paneWidth: number) => Math.max(240, Math.floor(paneWidth - 16))
 
 export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function PdfViewer({ url }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -52,8 +53,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function P
   const settledRef = useRef(settled)
   settledRef.current = settled
 
-  const scrollToPage = (page: number, behavior: ScrollBehavior) =>
-    scrollRef.current?.querySelector(`[data-page="${page}"]`)?.scrollIntoView({ block: 'start', behavior })
+  const scrollToPage = (page: number, behavior: ScrollBehavior) => {
+    const el = scrollRef.current?.querySelector(`[data-page="${page}"]`)
+    if (el) scrollWithin(el, 'start', behavior)
+  }
 
   // 配置がそろったら、保留中の移動を行う（引用の位置へは PageView がスクロール済みならそれを優先する）
   useEffect(() => {
@@ -72,7 +75,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function P
         nonce.current += 1
         if (settledRef.current) {
           pending.current = null
-          scrollToPage(page, 'smooth')
+          scrollToPage(page, scrollBehavior())
         } else {
           pending.current = { page, nonce: nonce.current }
         }
@@ -87,10 +90,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, { url: string }>(function P
     [],
   )
 
-  if (error) return <div className="pdf-error">PDF を表示できませんでした: {error}</div>
+  if (error)
+    return (
+      <div className="pdf-error" role="alert">
+        PDFを表示できませんでした（{error}）。ページを再読み込みしてください。
+      </div>
+    )
   return (
     <div className="pdf-scroll" ref={scrollRef}>
-      {!doc && <div className="muted pad">PDF を読み込み中…</div>}
+      {!doc && <div className="muted pad">PDFを読み込んでいます…</div>}
       {doc &&
         Array.from({ length: doc.numPages }, (_, i) => (
           <PageView

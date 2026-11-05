@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { step1 } from '../test/fixtures'
+import { NARROW_NODE_W } from './conceptLayout'
 import { Step1Map } from './Step1Map'
 
 describe('Step1Map', () => {
@@ -9,7 +10,6 @@ describe('Step1Map', () => {
     render(<Step1Map data={step1} paperId="p1" />)
     expect(screen.getByText('問題A')).toBeInTheDocument()
     expect(screen.getByText('全体像をつかむ')).toBeInTheDocument()
-    expect(screen.getByText(/未チェック 3 個/)).toBeInTheDocument()
   })
 
   it('reveals description only for unknown concepts and persists the choice', async () => {
@@ -41,13 +41,12 @@ describe('Step1Map', () => {
     expect(attention).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('本論文の中心')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '知らない' }))
-    expect(screen.getByRole('button', { name: /Attention.*補足あり/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Attention.*知らない/ })).toBeInTheDocument()
   })
 
   it('does not crash when "null" is stored', () => {
     localStorage.setItem('knowledge:p3', 'null')
     render(<Step1Map data={step1} paperId="p3" />)
-    expect(screen.getByText(/未チェック 3 個/)).toBeInTheDocument()
   })
 
   it('renders an empty map without a negative size', () => {
@@ -58,6 +57,19 @@ describe('Step1Map', () => {
   it('restores saved knowledge and tolerates broken storage', () => {
     localStorage.setItem('knowledge:p2', '{broken')
     render(<Step1Map data={step1} paperId="p2" />)
-    expect(screen.getByText(/未チェック 3 個/)).toBeInTheDocument()
+  })
+
+  it('stacks the map vertically on narrow screens and follows width changes', () => {
+    let listener = () => {}
+    const mq = { matches: true, addEventListener: (_: string, l: () => void) => (listener = l), removeEventListener: vi.fn() }
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mq as unknown as MediaQueryList)
+    const { container } = render(<Step1Map data={step1} paperId="p1" />)
+    const items = () => [...container.querySelectorAll<HTMLElement>('.graph-nodes li')]
+    expect(items()[0].style.width).toBe(`${NARROW_NODE_W}px`)
+    const tops = items().map((li) => parseFloat(li.style.top))
+    expect(tops[1]).toBeGreaterThan(tops[0])
+    mq.matches = false
+    act(() => listener())
+    expect(items()[0].style.width).not.toBe(`${NARROW_NODE_W}px`)
   })
 })

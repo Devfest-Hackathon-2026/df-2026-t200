@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { api, type Message } from '../api'
 import { EvidenceList } from '../jump'
+import { scrollWithin } from '../motion'
 
 const SOURCE_LABEL: Record<string, { text: string; cls: string }> = {
   paper: { text: '論文に記載', cls: 'paper' },
@@ -24,8 +25,24 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
   const inputId = `${uid}-input`
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' })
+    if (endRef.current) scrollWithin(endRef.current, 'end')
   }, [messages, busy, open])
+
+  // 狭い画面で PDF を見ている間に回答が届いた場合は、解説に戻って Q&A が見えたときに最新の回答までスクロールする
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const hiddenRef = useRef(false)
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!body || typeof ResizeObserver === 'undefined') return
+    hiddenRef.current = body.clientHeight === 0
+    const ro = new ResizeObserver(() => {
+      const nowHidden = body.clientHeight === 0
+      if (hiddenRef.current && !nowHidden && endRef.current) scrollWithin(endRef.current, 'end')
+      hiddenRef.current = nowHidden
+    })
+    ro.observe(body)
+    return () => ro.disconnect()
+  }, [open])
 
   async function send(q: string) {
     const question = q.trim()
@@ -41,7 +58,7 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
       setMessages(res.messages)
       setStatus('回答が届きました')
     } catch (e) {
-      setError((e as Error).message)
+      setError(`質問を送れませんでした（${(e as Error).message}）。もう一度「送信」を押してください。`)
       setStatus('')
       setMessages((m) => m.slice(0, -1))
       setInput(question)
@@ -61,7 +78,7 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
       <label htmlFor={inputId} className="sr-only">
         論文への質問
       </label>
-      <input id={inputId} value={input} onChange={(e) => setInput(e.target.value)} placeholder="論文について質問する" disabled={busy} />
+      <input id={inputId} value={input} onChange={(e) => setInput(e.target.value)} placeholder="質問を入力" disabled={busy} />
       <button type="submit" className="btn primary" disabled={busy || !input.trim()}>
         送信
       </button>
@@ -75,20 +92,17 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
       </div>
       <div className="qa-bar">
         <button type="button" className="qa-head" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open)}>
-          <strong>
-            <span className="wide-only">根拠付き</span>Q&amp;A
-          </strong>
+          <strong className="qa-title">質問と回答</strong>
           {messages.length > 0 && <span className="muted small">（{messages.length}件）</span>}
-          {open && <span className="muted small qa-sub">どのStepからでも質問できます</span>}
           <span className="qa-toggle" aria-hidden="true">
-            {open ? '▾' : '▴'}
+            {open ? '閉じる' : '開く'}
           </span>
         </button>
         {!open && form}
       </div>
       {open && (
         <>
-          <div className="qa-body" id={bodyId} role="log" aria-label="Q&Aの履歴">
+          <div className="qa-body" id={bodyId} ref={bodyRef} role="log" aria-label="Q&Aの履歴">
             {messages.length === 0 && (
               <div className="suggest">
                 {SUGGESTIONS.map((s) => (
@@ -100,10 +114,11 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
             )}
             {messages.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
+                {m.role === 'user' && <span className="msg-who">あなた</span>}
                 {m.role === 'assistant' && m.source && (
                   <div className="row gap small">
                     <span className={`badge ${SOURCE_LABEL[m.source].cls}`}>{SOURCE_LABEL[m.source].text}</span>
-                    {m.confidence && <span className="muted">確信度: {{ high: '高', medium: '中', low: '低' }[m.confidence]}</span>}
+                    {m.confidence && <span className="tag">確信度 {{ high: '高', medium: '中', low: '低' }[m.confidence]}</span>}
                   </div>
                 )}
                 <div className="msg-text">{m.text}</div>

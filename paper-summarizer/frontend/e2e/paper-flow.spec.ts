@@ -9,8 +9,8 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
   await expect(page).toHaveURL(/#\/paper\/[0-9a-f]{16}$/)
 
-  // PDF が描画される
-  await expect(page.locator('.pdf-page[data-page="1"]')).toBeVisible()
+  // PDF が描画される（サーバーを起動した直後は pdf.js の準備に時間がかかる）
+  await expect(page.locator('.pdf-page[data-page="1"]')).toBeVisible({ timeout: 20_000 })
 
   // Step 1: 前提知識マップ（デモモードでも約1秒で届く）
   await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeVisible({ timeout: 20_000 })
@@ -18,27 +18,27 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await expect(page.getByRole('heading', { name: /先に押さえておく概念/ })).toBeVisible()
 
   // Step 2: タブを開いた時点で最初の段階の根拠が強調され、段階を進めると次の根拠へ移る
-  await page.getByRole('tab', { name: /コアロジック/ }).click()
+  await page.getByRole('tab', { name: /手法の流れと図表/ }).click()
   await expect(page.getByRole('heading', { name: '手法の流れ' })).toBeVisible({ timeout: 20_000 })
-  await expect(page.locator('.textLayer .hl').first()).toBeVisible()
-  await page.getByRole('button', { name: '次の段階 →' }).click()
-  await expect(page.locator('.textLayer .hl').first()).toBeVisible()
+  await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: '次の段階へ' }).click()
+  await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
 
   // Step 3: 自分の考えを書いてから解説を開く
   await page.getByRole('tab', { name: /批判的思考/ }).click()
-  const reveal = page.getByRole('button', { name: '考えを書いたので解説を見る' })
+  const reveal = page.getByRole('button', { name: '解説を見る', exact: true })
   await expect(reveal).toBeDisabled({ timeout: 20_000 })
-  await page.getByPlaceholder(/あなたの考えをメモ/).fill('実験の条件が少ないと思う')
+  await page.getByPlaceholder('このブラウザにだけ保存します').fill('実験の条件が少ないと思う')
   // Step を切り替えると Step 2 の強調は消える
   await expect(page.locator('.textLayer .hl')).toHaveCount(0)
   await reveal.click()
   // 解説を開くと最初の項目までスクロールする
-  await expect(page.locator('.reveal-start')).toBeInViewport()
+  await expect(page.locator('.reveal-start')).toBeInViewport({ timeout: 20_000 })
   await expect(page.getByText('論文の記述').first()).toBeVisible()
-  await expect(page.getByText('AIの指摘・要検証').first()).toBeVisible()
+  await expect(page.getByText('AIの指摘（要検証）').first()).toBeVisible()
 
   // Q&A: 根拠付きの回答が返る
-  await page.getByPlaceholder('論文について質問する').fill('この手法の弱点は？')
+  await page.getByPlaceholder('質問を入力').fill('この手法の弱点は？')
   await page.getByRole('button', { name: '送信' }).click()
   await expect(page.locator('.msg.assistant .badge')).toBeVisible()
 })
@@ -47,13 +47,13 @@ test('moves the PDF highlight between pages and does not scroll back on resize',
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
   await expect(page).toHaveURL(/#\/paper\/[0-9a-f]{16}$/)
-  await page.getByRole('tab', { name: /コアロジック/ }).click()
+  await page.getByRole('tab', { name: /手法の流れと図表/ }).click()
   await expect(page.getByRole('heading', { name: '手法の流れ' })).toBeVisible({ timeout: 20_000 })
 
   // 段階1の根拠（1ページ目）→ 段階2の根拠（3ページ目）
-  await page.locator('.stage').getByRole('button', { name: 'p.1' }).click()
+  await page.locator('.stage').getByRole('button', { name: /^p\.1/ }).click()
   await expect(page.locator('.pdf-page[data-page="1"] .textLayer .hl').first()).toBeVisible()
-  await page.getByRole('button', { name: '次の段階 →' }).click()
+  await page.getByRole('button', { name: '次の段階へ' }).click()
   await expect(page.locator('.pdf-page[data-page="3"] .textLayer .hl').first()).toBeVisible()
   await expect(page.locator('.pdf-page[data-page="1"] .textLayer .hl')).toHaveCount(0)
 
@@ -75,9 +75,9 @@ test('remembers a jump requested before the PDF has loaded', async ({ page }) =>
   })
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
-  await expect(page.getByRole('heading', { name: 'おすすめの読む順番' })).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByText('PDF を読み込み中…')).toBeVisible()
-  await page.locator('.reading-order').getByRole('button', { name: 'p.3' }).first().click()
+  await expect(page.getByRole('heading', { name: '読む順番' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('PDFを読み込んでいます…')).toBeVisible()
+  await page.locator('.reading-order').getByRole('button', { name: 'p.3を開く' }).first().click()
   await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport({ timeout: 10_000 })
 })
 
@@ -92,7 +92,7 @@ test('Step content keeps at least half of the right pane on a 1440x900 screen', 
   await expect(page.getByRole('button', { name: 'この手法の弱点は？' })).toBeHidden()
   expect(await ratio()).toBeGreaterThanOrEqual(0.5)
   // 質問すると開くが、それでも解説は半分以上
-  await page.getByPlaceholder('論文について質問する').fill('この手法の弱点は？')
+  await page.getByPlaceholder('質問を入力').fill('この手法の弱点は？')
   await page.getByRole('button', { name: '送信' }).click()
   await expect(page.locator('.msg.assistant .badge')).toBeVisible()
   expect(await ratio()).toBeGreaterThanOrEqual(0.5)
@@ -105,18 +105,18 @@ test('fits a 390px phone screen and switches between PDF and explanation', async
     expect(scroll).toBeLessThanOrEqual(client)
   }
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: '英語論文を、3つのステップで自分のものに。' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /論文のPDFを選ぶ/ })).toBeVisible()
   await noHorizontalScroll()
 
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
   await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeVisible({ timeout: 20_000 })
   await noHorizontalScroll()
-  // 上部のバーは1行に収まり、「新しい論文」が縦に折り返さない
-  const button = await page.getByRole('link', { name: '新しい論文' }).boundingBox()
+  // 上部のバーは1行に収まり、「別の論文を開く」が縦に折り返さない
+  const button = await page.getByRole('link', { name: '別の論文を開く' }).boundingBox()
   expect(button!.height).toBeLessThan(48)
   expect((await page.locator('.topbar').boundingBox())!.height).toBeLessThan(70)
   // Step のタブは3つとも画面内に収まる
-  for (const name of [/前提知識/, /コアロジック/, /批判的思考/]) {
+  for (const name of [/前提知識/, /手法の流れと図表/, /批判的思考/]) {
     const box = (await page.getByRole('tab', { name }).boundingBox())!
     expect(box.x + box.width).toBeLessThanOrEqual(390)
   }
@@ -130,7 +130,7 @@ test('fits a 390px phone screen and switches between PDF and explanation', async
   await noHorizontalScroll()
   // 解説の根拠チップを押すと PDF 側に切り替わる
   await page.getByRole('tab', { name: '解説' }).click()
-  await page.locator('.reading-order').getByRole('button', { name: 'p.3' }).first().click()
+  await page.locator('.reading-order').getByRole('button', { name: 'p.3を開く' }).first().click()
   await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport()
 })
 
@@ -138,9 +138,9 @@ test('on a phone, a page chip opens the PDF at that page even though the PDF was
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
-  await expect(page.getByRole('heading', { name: 'おすすめの読む順番' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: '読む順番' })).toBeVisible({ timeout: 20_000 })
   // PDF タブを一度も開かずに、後ろのページのチップを押す
-  await page.locator('.reading-order').getByRole('button', { name: 'p.3' }).first().click()
+  await page.locator('.reading-order').getByRole('button', { name: 'p.3を開く' }).first().click()
   await expect(page.getByRole('tab', { name: 'PDF' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport({ ratio: 0.9 })
   await page.waitForTimeout(500) // 幅が決まった後の描き直しでずれないこと
@@ -150,7 +150,7 @@ test('on a phone, a page chip opens the PDF at that page even though the PDF was
 test('rejects a non-PDF file with a clear message', async ({ page }) => {
   await page.goto('/')
   await page.locator('input[type=file]').setInputFiles({ name: 'note.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') })
-  await expect(page.getByText('PDF ファイルを選んでください')).toBeVisible()
+  await expect(page.getByText('選んだファイルはPDFではありません。PDFファイルを選んでください。')).toBeVisible()
 })
 
 test('reuses the analysis when the same PDF is uploaded again', async ({ page }) => {
@@ -160,15 +160,46 @@ test('reuses the analysis when the same PDF is uploaded again', async ({ page })
   const firstUrl = page.url()
   // 解析が終わるまで待つ（完了した解析だけが再利用される）
   await page.getByRole('tab', { name: /批判的思考/ }).click()
-  await expect(page.getByRole('button', { name: '書かずに見る' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '書かずに解説を見る' })).toBeVisible({ timeout: 20_000 })
   await expect(page.locator('.spinner')).toHaveCount(0, { timeout: 20_000 })
 
-  await page.getByRole('link', { name: '新しい論文' }).click()
+  await page.getByRole('link', { name: '別の論文を開く' }).click()
   await expect(page.getByRole('heading', { name: 'これまでの論文' })).toBeVisible()
   await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
   // 論文の記録はアップロードごとに新しく作り、解析結果だけを写す（他人の会話は見えない）
   await expect(page).toHaveURL(/#\/paper\/[0-9a-f]{16}$/)
   expect(page.url()).not.toBe(firstUrl)
   await page.getByRole('tab', { name: /批判的思考/ }).click()
-  await expect(page.getByRole('button', { name: '書かずに見る' })).toBeVisible({ timeout: 5_000 })
+  await expect(page.getByRole('button', { name: '書かずに解説を見る' })).toBeVisible({ timeout: 5_000 })
 })
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`keeps the page fixed to the viewport at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    // e2e の型設定には DOM がないので、式を文字列で渡す
+    const pageScroll = () => page.evaluate<number[]>('[window.scrollY, document.scrollingElement.scrollTop]')
+    await page.goto('/')
+    await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+    await page.getByRole('tab', { name: /批判的思考/ }).click()
+    await page.getByRole('button', { name: '書かずに解説を見る' }).click({ timeout: 20_000 })
+    await expect(page.locator('.reveal-start')).toBeInViewport({ timeout: 20_000 })
+    await expect.poll(pageScroll).toEqual([0, 0])
+    // 根拠チップで PDF へ移動する（狭い画面では PDF タブに切り替わる）
+    await page
+      .locator('.columns')
+      .getByRole('button', { name: /^p\.\d/ })
+      .first()
+      .click()
+    await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('.textLayer .hl').first()).toBeInViewport()
+    await expect.poll(pageScroll).toEqual([0, 0])
+    if (viewport.width <= 900) await page.getByRole('tab', { name: '解説' }).click()
+    await page.getByPlaceholder('質問を入力').fill('この手法の弱点は？')
+    await page.getByRole('button', { name: '送信' }).click()
+    await expect(page.locator('.msg.assistant .badge')).toBeVisible()
+    await expect.poll(pageScroll).toEqual([0, 0])
+  })
+}

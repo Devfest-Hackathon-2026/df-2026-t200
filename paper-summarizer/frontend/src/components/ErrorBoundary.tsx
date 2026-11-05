@@ -22,7 +22,9 @@ export class ErrorBoundary extends Component<Props, State> {
         <p>
           <strong>{this.props.title}</strong>
         </p>
-        <p className="small">解析結果の形式が想定と異なる可能性があります。（{this.state.error.message}）</p>
+        <p className="small">
+          解析結果の形式が想定と違います（{this.state.error.message}）。直らないときは、論文をアップロードし直してください。
+        </p>
         <button type="button" className="btn" onClick={() => this.setState({ error: null })}>
           もう一度表示する
         </button>

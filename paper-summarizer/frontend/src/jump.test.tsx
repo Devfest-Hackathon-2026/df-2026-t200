@@ -11,7 +11,7 @@ const withJump = (ui: React.ReactNode, jump = vi.fn()) => ({
 describe('EvidenceChip', () => {
   it('jumps to page and quote on click', async () => {
     const { jump } = withJump(<EvidenceChip ev={{ page: 4, quote: 'simple', verified: true }} />)
-    await userEvent.click(screen.getByRole('button', { name: 'p.4' }))
+    await userEvent.click(screen.getByRole('button', { name: /^p\.4/ }))
     expect(jump).toHaveBeenCalledWith(4, 'simple')
   })
 
@@ -29,8 +29,8 @@ describe('PageChip', () => {
   })
 
   it('jumps without quote', async () => {
-    const { jump } = withJump(<PageChip page={7} label="初出 p.7" />)
-    await userEvent.click(screen.getByRole('button', { name: '初出 p.7' }))
+    const { jump } = withJump(<PageChip page={7} label="初出のp.7を開く" />)
+    await userEvent.click(screen.getByRole('button', { name: '初出のp.7を開く' }))
     expect(jump).toHaveBeenCalledWith(7)
   })
 })

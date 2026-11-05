@@ -18,7 +18,7 @@ const VIEWS = [
 
 const STEPS = [
   { n: 1, key: 'step1', title: '前提知識マップ', verb: '知る' },
-  { n: 2, key: 'step2', title: 'コアロジック＆図表連動', verb: '追う' },
+  { n: 2, key: 'step2', title: '手法の流れと図表', verb: '追う' },
   { n: 3, key: 'step3', title: '批判的思考チェック', verb: '疑う' },
 ] as const
 
@@ -67,11 +67,11 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
     return error ? (
       <div className="center">
         <p className="error" role="alert">
-          論文を読み込めませんでした（{error}）。自動で再試行しています…
+          論文を読み込めませんでした（{error}）。少し待つと自動で読み込み直します。
         </p>
       </div>
     ) : (
-      <div className="center muted">読み込み中…</div>
+      <div className="center muted">論文を読み込んでいます…</div>
     )
   }
 
@@ -97,8 +97,9 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
         <div className="pane-right" id="view-panel-explain" role="tabpanel" aria-labelledby="view-tab-explain">
           <div className="paper-title">
             <h1>{r.step1?.title ?? paper.filename}</h1>
-            <span className="muted small">
-              {paper.page_count}ページ・{paper.level === 'grad' ? '大学院生向け' : '学部生向け'}
+            <span className="paper-meta">
+              <span className="muted small">全{paper.page_count}ページ</span>
+              <span className="tag">{paper.level === 'grad' ? '大学院生向け' : '学部生向け'}</span>
             </span>
           </div>
           <TabList
@@ -114,8 +115,9 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
               label: (
                 <>
                   <span className="tab-step">
-                    Step {s.n}・{s.verb}
-                    {!ready[s.n] && working && <span className="spinner" role="img" aria-label="生成中" />}
+                    <span className="tab-num">{s.n}</span>
+                    <span className="tab-verb">{s.verb}</span>
+                    {!ready[s.n] && working && <span className="spinner" role="img" aria-label="作成中" />}
                   </span>
                   <span className="tab-title">{s.title}</span>
                 </>
@@ -124,24 +126,24 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
           />
           {error && (
             <div className="error banner" role="alert">
-              通信に失敗しました（{error}）。自動で再試行しています…
+              サーバーとの通信に失敗しました（{error}）。少し待つと自動でつなぎ直します。
             </div>
           )}
           {paper.status === 'failed' && (
             <div className="error banner" role="alert">
               <span>
-                {paper.error}
-                {retryError && <span className="small"> / 再実行に失敗しました: {retryError}</span>}
+                解析に失敗しました（<span>{paper.error}</span>）。
+                {retryError && <span className="small"> やり直しも失敗しました（{retryError}）。時間をおいてもう一度押してください。</span>}
               </span>
               <button type="button" className="btn" onClick={retry} disabled={retrying}>
-                再実行
+                解析をやり直す
               </button>
             </div>
           )}
           <div className="step-scroll" id="step-panel" role="tabpanel" aria-labelledby={`step-tab-${step}`} tabIndex={0}>
             <ErrorBoundary key={step} title="このStepを表示できませんでした">
               {step === 1 && (r.step1 ? <Step1Map data={r.step1} paperId={id} /> : <Pending working={working} label="前提知識マップ" />)}
-              {step === 2 && (r.step2 ? <Step2Walkthrough data={r.step2} /> : <Pending working={working} label="ウォークスルー" />)}
+              {step === 2 && (r.step2 ? <Step2Walkthrough data={r.step2} /> : <Pending working={working} label="手法の流れの解説" />)}
               {step === 3 &&
                 (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
             </ErrorBoundary>
@@ -158,7 +160,7 @@ function NotFound() {
     <div className="center">
       <div className="not-found">
         <p>論文が見つかりません</p>
-        <p className="muted small">URLが間違っているか、データが削除された可能性があります。</p>
+        <p className="muted small">URLを確かめるか、PDFをもう一度アップロードしてください。</p>
         <button type="button" className="btn primary" onClick={() => (window.location.hash = '#/')}>
           アップロード画面へ戻る
         </button>
@@ -173,11 +175,10 @@ function Pending({ working, label }: { working: boolean; label: string }) {
       {working ? (
         <>
           <span className="spinner big" />
-          <p>Gemini が論文全体（図表・数式を含む）を読んで{label}を作成しています…</p>
-          <p className="muted small">先にできたStepから表示されます。</p>
+          <p>{label}を作成しています…</p>
         </>
       ) : (
-        <p className="muted">{label}は生成されていません。</p>
+        <p className="muted">{label}を作成できませんでした。</p>
       )}
     </div>
   )
@@ -198,10 +199,10 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <a href="#/" className="brand">
-          PaperSummarizer <span className="muted brand-sub">for Students</span>
+          <span className="brand-name">PaperSummarizer</span> <span className="muted brand-sub">for Students</span>
         </a>
         {health?.demo_mode && (
-          <span className="badge demo" title="Gemini の認証情報が未設定のため、サンプルの解析結果を表示しています">
+          <span className="tag demo" title="Gemini の認証情報が設定されていないので、サンプルの解析結果を表示しています">
             <span className="wide-only">デモモード（サンプルデータ）</span>
             <span className="narrow-only">デモ</span>
           </span>
@@ -210,12 +211,14 @@ export default function App() {
         <span className="spacer" />
         {id && (
           <a href="#/" className="btn">
-            新しい論文
+            別の論文を開く
           </a>
         )}
       </header>
       {health === null && (
-        <div className="error banner">バックエンド（http://localhost:8000）に接続できません。起動しているか確認してください。</div>
+        <div className="error banner">
+          バックエンド（http://localhost:8000）に接続できません。バックエンドを起動してから、このページを再読み込みしてください。
+        </div>
       )}
       <ErrorBoundary key={id ?? 'upload'} title="画面を表示できませんでした">
         {id ? (
