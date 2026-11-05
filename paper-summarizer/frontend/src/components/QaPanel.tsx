@@ -61,7 +61,7 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
       <label htmlFor={inputId} className="sr-only">
         論文への質問
       </label>
-      <input id={inputId} value={input} onChange={(e) => setInput(e.target.value)} placeholder="論文について質問する" disabled={busy} />
+      <input id={inputId} value={input} onChange={(e) => setInput(e.target.value)} placeholder="質問を入力" disabled={busy} />
       <button type="submit" className="btn primary" disabled={busy || !input.trim()}>
         送信
       </button>

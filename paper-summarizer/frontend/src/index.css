@@ -1518,6 +1518,13 @@ h3 {
   .qa-head {
     padding: 6px 12px;
   }
+  /* 開いても画面の高さの4割まで。中身は Q&A の中でスクロールする */
+  .qa.open {
+    height: 34%;
+    min-height: 160px;
+    max-height: 40vh;
+    max-height: 40dvh;
+  }
   .qa-input {
     padding: 8px 12px 10px;
   }

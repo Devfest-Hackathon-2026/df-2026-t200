@@ -38,7 +38,7 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await expect(page.getByText('AIの指摘（要検証）').first()).toBeVisible()
 
   // Q&A: 根拠付きの回答が返る
-  await page.getByPlaceholder('論文について質問する').fill('この手法の弱点は？')
+  await page.getByPlaceholder('質問を入力').fill('この手法の弱点は？')
   await page.getByRole('button', { name: '送信' }).click()
   await expect(page.locator('.msg.assistant .badge')).toBeVisible()
 })
@@ -92,7 +92,7 @@ test('Step content keeps at least half of the right pane on a 1440x900 screen', 
   await expect(page.getByRole('button', { name: 'この手法の弱点は？' })).toBeHidden()
   expect(await ratio()).toBeGreaterThanOrEqual(0.5)
   // 質問すると開くが、それでも解説は半分以上
-  await page.getByPlaceholder('論文について質問する').fill('この手法の弱点は？')
+  await page.getByPlaceholder('質問を入力').fill('この手法の弱点は？')
   await page.getByRole('button', { name: '送信' }).click()
   await expect(page.locator('.msg.assistant .badge')).toBeVisible()
   expect(await ratio()).toBeGreaterThanOrEqual(0.5)
