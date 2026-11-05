@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type Health } from './api'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { PdfViewer, type PdfViewerHandle } from './components/PdfViewer'
 import { QaPanel } from './components/QaPanel'
 import { Step1Map } from './components/Step1Map'
@@ -136,10 +137,12 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
             </div>
           )}
           <div className="step-scroll" id="step-panel" role="tabpanel" aria-labelledby={`step-tab-${step}`} tabIndex={0}>
-            {step === 1 && (r.step1 ? <Step1Map data={r.step1} paperId={id} /> : <Pending working={working} label="前提知識マップ" />)}
-            {step === 2 && (r.step2 ? <Step2Walkthrough data={r.step2} /> : <Pending working={working} label="ウォークスルー" />)}
-            {step === 3 &&
-              (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
+            <ErrorBoundary key={step} title="このStepを表示できませんでした">
+              {step === 1 && (r.step1 ? <Step1Map data={r.step1} paperId={id} /> : <Pending working={working} label="前提知識マップ" />)}
+              {step === 2 && (r.step2 ? <Step2Walkthrough data={r.step2} /> : <Pending working={working} label="ウォークスルー" />)}
+              {step === 3 &&
+                (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
+            </ErrorBoundary>
           </div>
           {health && <QaPanel paperId={id} initial={paper.messages} currentStep={step} />}
         </div>
@@ -212,11 +215,13 @@ export default function App() {
       {health === null && (
         <div className="error banner">バックエンド（http://localhost:8000）に接続できません。起動しているか確認してください。</div>
       )}
-      {id ? (
-        <PaperView key={id} id={id} health={health ?? null} />
-      ) : (
-        <Upload health={health ?? null} onOpen={(pid) => (window.location.hash = `#/paper/${pid}`)} />
-      )}
+      <ErrorBoundary key={id ?? 'upload'} title="画面を表示できませんでした">
+        {id ? (
+          <PaperView key={id} id={id} health={health ?? null} />
+        ) : (
+          <Upload health={health ?? null} onOpen={(pid) => (window.location.hash = `#/paper/${pid}`)} />
+        )}
+      </ErrorBoundary>
     </div>
   )
 }

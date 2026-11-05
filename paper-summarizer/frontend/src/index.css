@@ -108,6 +108,12 @@ h3 {
   padding: 8px 12px;
   margin: 8px 0;
 }
+.error.boundary {
+  margin: 16px;
+}
+.error.boundary p {
+  margin: 0 0 8px;
+}
 .error.banner {
   margin: 8px 16px;
   display: flex;

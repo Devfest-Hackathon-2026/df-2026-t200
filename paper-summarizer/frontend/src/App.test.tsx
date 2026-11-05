@@ -128,6 +128,20 @@ describe('App', () => {
     expect(container.querySelector('.workspace')).toHaveClass('show-explain')
   })
 
+  it('keeps the app usable when one step has a broken result', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    const broken = { overview: 'x', stages: [{ title: 't', explanation: 'e', evidence: [], equations: [] }] }
+    vi.spyOn(api, 'get').mockResolvedValue({ ...paper, results: { ...paper.results, step2: broken as never } })
+    render(<App />)
+    await screen.findByText('問題A')
+    await userEvent.click(screen.getByRole('tab', { name: /コアロジック/ }))
+    expect(screen.getByRole('alert')).toHaveTextContent('このStepを表示できませんでした')
+    await userEvent.click(screen.getByRole('tab', { name: /前提知識/ }))
+    expect(screen.getByText('問題A')).toBeInTheDocument()
+  })
+
   it('shows the error and retry button for a failed analysis', async () => {
     window.location.hash = `#/paper/${paper.id}`
     vi.spyOn(api, 'health').mockResolvedValue(health)

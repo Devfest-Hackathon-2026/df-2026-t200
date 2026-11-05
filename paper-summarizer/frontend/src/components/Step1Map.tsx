@@ -1,64 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { Concept, Step1 } from '../api'
+import { useMemo, useState } from 'react'
+import type { Step1 } from '../api'
+import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { PageChip } from '../jump'
+import { NODE_H, NODE_W, layoutConcepts } from './conceptLayout'
 
 type Knowledge = Record<string, 'known' | 'unknown'>
 
-const NODE_W = 168
-const NODE_H = 48
-const COL_GAP = 44
-const ROW_GAP = 14
-const PAD = 12
-
-/** 依存関係から列（深さ）を決める。基礎的な概念が左、論文の中心に近い概念が右に並ぶ。 */
-function layout(concepts: Concept[]) {
-  const byId = new Map(concepts.map((c) => [c.id, c]))
-  const depth = new Map<string, number>()
-  const visit = (id: string, stack: Set<string>): number => {
-    if (depth.has(id)) return depth.get(id)!
-    if (stack.has(id)) return 0 // 循環は打ち切る
-    stack.add(id)
-    const c = byId.get(id)
-    const d = c ? Math.max(0, ...c.depends_on.filter((x) => byId.has(x)).map((x) => visit(x, stack) + 1)) : 0
-    stack.delete(id)
-    depth.set(id, d)
-    return d
-  }
-  concepts.forEach((c) => visit(c.id, new Set()))
-  const cols: Concept[][] = []
-  concepts.forEach((c) => {
-    const d = depth.get(c.id) ?? 0
-    ;(cols[d] ??= []).push(c)
-  })
-  const pos = new Map<string, { x: number; y: number }>()
-  cols.forEach((col, ci) => col.forEach((c, ri) => pos.set(c.id, { x: PAD + ci * (NODE_W + COL_GAP), y: PAD + ri * (NODE_H + ROW_GAP) })))
-  const rows = Math.max(1, ...cols.map((c) => c?.length ?? 0))
-  return {
-    pos,
-    width: PAD * 2 + cols.length * NODE_W + (cols.length - 1) * COL_GAP,
-    height: PAD * 2 + rows * NODE_H + (rows - 1) * ROW_GAP,
-  }
-}
+const isKnowledge = (v: unknown): v is Knowledge =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => x === 'known' || x === 'unknown')
 
 export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
-  const storageKey = `knowledge:${paperId}`
-  const [knowledge, setKnowledge] = useState<Knowledge>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(storageKey) ?? '{}')
-    } catch {
-      return {}
-    }
-  })
+  const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
   const [selected, setSelected] = useState<string | null>(data.concepts[0]?.id ?? null)
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(knowledge))
-    } catch {
-      /* 保存できなくても動作は続ける */
-    }
-  }, [knowledge, storageKey])
-
-  const { pos, width, height } = useMemo(() => layout(data.concepts), [data.concepts])
+  const { pos, width, height } = useMemo(() => layoutConcepts(data.concepts), [data.concepts])
   const sel = data.concepts.find((c) => c.id === selected)
   const unknown = data.concepts.filter((c) => knowledge[c.id] === 'unknown')
   const unchecked = data.concepts.filter((c) => !knowledge[c.id]).length

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CriticalPoint, Origin, Step3 } from '../api'
+import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { EvidenceList } from '../jump'
+
+const isString = (v: unknown): v is string => typeof v === 'string'
 
 function OriginBadge({ origin }: { origin: Origin }) {
   return origin === 'paper' ? (
@@ -33,27 +36,14 @@ function Points({ title, items }: { title: string; items: CriticalPoint[] }) {
 }
 
 export function Step3Critical({ data, paperId }: { data: Step3; paperId: string }) {
-  const key = `thoughts:${paperId}`
-  const [thoughts, setThoughts] = useState<string>(() => {
-    try {
-      return localStorage.getItem(key) ?? ''
-    } catch {
-      return ''
-    }
-  })
+  // 1文字ごとに保存しないよう、書き込みは間引く
+  const [thoughts, setThoughts] = useLocalStorageState(`thoughts:${paperId}`, '', isString)
   const [revealed, setRevealed] = useState(false)
   const resultsRef = useRef<HTMLParagraphElement>(null)
   // 解説を開いたら最初の項目までスクロールし、何が出てきたかを見せる
   useEffect(() => {
     if (revealed) resultsRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }, [revealed])
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, thoughts)
-    } catch {
-      /* 保存できなくても動作は続ける */
-    }
-  }, [thoughts, key])
 
   return (
     <div className="step">

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { step3 } from '../test/fixtures'
@@ -11,7 +11,7 @@ describe('Step3Critical', () => {
     const reveal = screen.getByRole('button', { name: '考えを書いたので解説を見る' })
     expect(reveal).toBeDisabled()
     await userEvent.type(screen.getByLabelText('あなたの考え'), '実験が少ない')
-    expect(localStorage.getItem('thoughts:p1')).toBe('実験が少ない')
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('thoughts:p1')!)).toBe('実験が少ない'))
     await userEvent.click(reveal)
     expect(screen.getByText('実装が単純')).toBeInTheDocument()
   })
