@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { step3 } from '../test/fixtures'
 import { Step3Critical } from './Step3Critical'
 
@@ -25,6 +25,15 @@ describe('Step3Critical', () => {
     expect(aiItem).toHaveTextContent('AIの指摘・要検証')
     expect(screen.getByText('RNN')).toBeInTheDocument()
     expect(screen.getByText('弱点は？')).toBeInTheDocument()
+  })
+
+  it('scrolls to the first result when the analysis is revealed', async () => {
+    const scroll = vi.mocked(Element.prototype.scrollIntoView)
+    scroll.mockClear()
+    render(<Step3Critical data={step3} paperId="p1" />)
+    await userEvent.click(screen.getByRole('button', { name: '書かずに見る' }))
+    expect(scroll).toHaveBeenCalled()
+    expect(scroll.mock.contexts[0]).toBe(document.querySelector('.reveal-start'))
   })
 
   it('restores saved thoughts', () => {

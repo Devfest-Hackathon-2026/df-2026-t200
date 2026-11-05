@@ -17,9 +17,11 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await page.getByRole('button', { name: '知らない' }).click()
   await expect(page.getByRole('heading', { name: /先に押さえておく概念/ })).toBeVisible()
 
-  // Step 2: 段階を進めると PDF の根拠箇所が強調される
+  // Step 2: タブを開いただけでは PDF は動かず、段階を進めると根拠箇所が強調される
   await page.getByRole('tab', { name: /コアロジック/ }).click()
   await expect(page.getByRole('heading', { name: '手法の流れ' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('.textLayer .hl')).toHaveCount(0)
+  await page.getByRole('button', { name: '次の段階 →' }).click()
   await expect(page.locator('.textLayer .hl').first()).toBeVisible()
 
   // Step 3: 自分の考えを書いてから解説を開く
@@ -27,7 +29,11 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   const reveal = page.getByRole('button', { name: '考えを書いたので解説を見る' })
   await expect(reveal).toBeDisabled({ timeout: 20_000 })
   await page.getByPlaceholder(/あなたの考えをメモ/).fill('実験の条件が少ないと思う')
+  // Step を切り替えると Step 2 の強調は消える
+  await expect(page.locator('.textLayer .hl')).toHaveCount(0)
   await reveal.click()
+  // 解説を開くと最初の項目までスクロールする
+  await expect(page.locator('.reveal-start')).toBeInViewport()
   await expect(page.getByText('論文の記述').first()).toBeVisible()
   await expect(page.getByText('AIの指摘・要検証').first()).toBeVisible()
 
@@ -59,6 +65,20 @@ test('moves the PDF highlight between pages and does not scroll back on resize',
   await page.waitForTimeout(1000)
   expect(await scroller.evaluate((el) => el.scrollTop)).toBeLessThan(50)
   await expect(page.locator('.pdf-page[data-page="3"] .textLayer .hl').first()).toBeAttached()
+})
+
+test('remembers a jump requested before the PDF has loaded', async ({ page }) => {
+  // PDF の配信だけを遅らせ、解説（Step 1）が先に表示される状況を作る
+  await page.route('**/api/papers/*/pdf', async (route) => {
+    await new Promise((r) => setTimeout(r, 3000))
+    await route.continue()
+  })
+  await page.goto('/')
+  await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+  await expect(page.getByRole('heading', { name: 'おすすめの読む順番' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('PDF を読み込み中…')).toBeVisible()
+  await page.locator('.reading-order').getByRole('button', { name: 'p.3' }).first().click()
+  await expect(page.locator('.pdf-page[data-page="3"]')).toBeInViewport({ timeout: 10_000 })
 })
 
 test('rejects a non-PDF file with a clear message', async ({ page }) => {

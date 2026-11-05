@@ -5,9 +5,15 @@ import { api, ApiError } from './api'
 import App from './App'
 import { paper } from './test/fixtures'
 
+const viewer = vi.hoisted(() => ({ jumpTo: vi.fn(), clearHighlight: vi.fn() }))
 vi.mock('./components/PdfViewer', async () => {
-  const { forwardRef } = await import('react')
-  return { PdfViewer: forwardRef(() => <div data-testid="pdf" />) }
+  const { forwardRef, useImperativeHandle } = await import('react')
+  return {
+    PdfViewer: forwardRef((_props, ref) => {
+      useImperativeHandle(ref, () => viewer)
+      return <div data-testid="pdf" />
+    }),
+  }
 })
 
 const health = { demo_mode: true, backend: 'demo', analysis_model: 'm', max_upload_mb: 20 }
@@ -41,6 +47,18 @@ describe('App', () => {
     expect(screen.getByText('Gemini: m')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /前提知識マップ/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('問題A')).toBeInTheDocument()
+  })
+
+  it('clears the PDF highlight when switching steps', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    render(<App />)
+    await screen.findByText('問題A')
+    viewer.clearHighlight.mockClear()
+    await userEvent.click(screen.getByRole('tab', { name: /コアロジック/ }))
+    expect(viewer.clearHighlight).toHaveBeenCalledTimes(1)
+    expect(viewer.jumpTo).not.toHaveBeenCalled()
   })
 
   it('shows the error and retry button for a failed analysis', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CriticalPoint, Origin, Step3 } from '../api'
 import { EvidenceList } from '../jump'
 
@@ -42,6 +42,11 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
     }
   })
   const [revealed, setRevealed] = useState(false)
+  const resultsRef = useRef<HTMLParagraphElement>(null)
+  // 解説を開いたら最初の項目までスクロールし、何が出てきたかを見せる
+  useEffect(() => {
+    if (revealed) resultsRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [revealed])
   useEffect(() => {
     try {
       localStorage.setItem(key, thoughts)
@@ -79,7 +84,7 @@ export function Step3Critical({ data, paperId }: { data: Step3; paperId: string 
 
       {revealed && (
         <>
-          <p className="legend small">
+          <p className="legend small reveal-start" ref={resultsRef}>
             <span className="badge paper">論文の記述</span> 論文自身が述べていること（根拠ページ付き）
             <span className="badge ai">AIの指摘・要検証</span> AIの推論。論文の主張ではないので、自分で確かめる
           </p>

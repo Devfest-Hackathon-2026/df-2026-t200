@@ -24,6 +24,11 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
   const [step, setStep] = useState(1)
   const viewer = useRef<PdfViewerHandle>(null)
   const jump = useCallback((page: number, quote?: string) => viewer.current?.jumpTo(page, quote), [])
+  // Step を切り替えたら、前の Step で付けた PDF の強調を消す
+  const selectStep = (n: number) => {
+    if (n !== step) viewer.current?.clearHighlight()
+    setStep(n)
+  }
 
   const retry = async () => {
     setRetrying(true)
@@ -76,7 +81,7 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
                 role="tab"
                 aria-selected={step === s.n}
                 className={`tab ${step === s.n ? 'active' : ''}`}
-                onClick={() => setStep(s.n)}
+                onClick={() => selectStep(s.n)}
               >
                 <span className="tab-step">
                   Step {s.n}・{s.verb}
