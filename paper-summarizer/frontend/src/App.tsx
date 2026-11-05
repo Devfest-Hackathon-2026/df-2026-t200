@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Health, type Paper } from './api'
+import { api, type Health } from './api'
 import { PdfViewer, type PdfViewerHandle } from './components/PdfViewer'
 import { QaPanel } from './components/QaPanel'
 import { Step1Map } from './components/Step1Map'
 import { Step2Walkthrough } from './components/Step2Walkthrough'
 import { Step3Critical } from './components/Step3Critical'
 import { Upload } from './components/Upload'
+import { usePaper } from './hooks/usePaper'
 import { JumpContext } from './jump'
 
 const STEPS = [
@@ -17,36 +18,38 @@ const STEPS = [
 const paperIdFromHash = () => window.location.hash.match(/^#\/paper\/([0-9a-f]{16})$/)?.[1] ?? null
 
 function PaperView({ id, health }: { id: string; health: Health | null }) {
-  const [paper, setPaper] = useState<Paper | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { paper, error, notFound, refresh } = usePaper(id)
+  const [retryError, setRetryError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
   const [step, setStep] = useState(1)
   const viewer = useRef<PdfViewerHandle>(null)
   const jump = useCallback((page: number, quote?: string) => viewer.current?.jumpTo(page, quote), [])
 
-  // ローカルではポーリング（本番は Firestore のリアルタイムリスナーで置き換える）
-  useEffect(() => {
-    let alive = true
-    let timer: number | undefined
-    const tick = async () => {
-      try {
-        const p = await api.get(id)
-        if (!alive) return
-        setPaper(p)
-        setError(null)
-        if (p.status !== 'done' && p.status !== 'failed') timer = window.setTimeout(tick, 1500)
-      } catch (e) {
-        if (alive) setError((e as Error).message)
-      }
+  const retry = async () => {
+    setRetrying(true)
+    setRetryError(null)
+    try {
+      await api.retry(id)
+      refresh()
+    } catch (e) {
+      setRetryError((e as Error).message)
+    } finally {
+      setRetrying(false)
     }
-    tick()
-    return () => {
-      alive = false
-      window.clearTimeout(timer)
-    }
-  }, [id])
+  }
 
-  if (error) return <div className="center error">{error}</div>
-  if (!paper) return <div className="center muted">読み込み中…</div>
+  if (notFound) return <NotFound />
+  if (!paper) {
+    return error ? (
+      <div className="center">
+        <p className="error" role="alert">
+          論文を読み込めませんでした（{error}）。自動で再試行しています…
+        </p>
+      </div>
+    ) : (
+      <div className="center muted">読み込み中…</div>
+    )
+  }
 
   const r = paper.results
   const ready = { 1: !!r.step1, 2: !!r.step2, 3: !!r.step3 } as Record<number, boolean>
@@ -83,10 +86,18 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
               </button>
             ))}
           </nav>
+          {error && (
+            <div className="error banner" role="alert">
+              通信に失敗しました（{error}）。自動で再試行しています…
+            </div>
+          )}
           {paper.status === 'failed' && (
-            <div className="error banner">
-              {paper.error}
-              <button type="button" className="btn" onClick={() => api.retry(id).then(() => window.location.reload())}>
+            <div className="error banner" role="alert">
+              <span>
+                {paper.error}
+                {retryError && <span className="small"> / 再実行に失敗しました: {retryError}</span>}
+              </span>
+              <button type="button" className="btn" onClick={retry} disabled={retrying}>
                 再実行
               </button>
             </div>
@@ -101,6 +112,20 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
         </div>
       </div>
     </JumpContext.Provider>
+  )
+}
+
+function NotFound() {
+  return (
+    <div className="center">
+      <div className="not-found">
+        <p>論文が見つかりません</p>
+        <p className="muted small">URLが間違っているか、データが削除された可能性があります。</p>
+        <button type="button" className="btn primary" onClick={() => (window.location.hash = '#/')}>
+          アップロード画面へ戻る
+        </button>
+      </div>
+    </div>
   )
 }
 

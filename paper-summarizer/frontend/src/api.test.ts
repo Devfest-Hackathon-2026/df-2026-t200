@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { api } from './api'
+import { api, ApiError } from './api'
 import { jsonResponse } from './test/fixtures'
 
 describe('api', () => {
@@ -12,6 +12,13 @@ describe('api', () => {
   it('throws the server detail string on error', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ detail: 'PDF ファイルをアップロードしてください' }, 400))
     await expect(api.get('x')).rejects.toThrow('PDF ファイルをアップロードしてください')
+  })
+
+  it('keeps the HTTP status on the thrown error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ detail: '論文が見つかりません' }, 404))
+    const err = await api.get('x').catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).status).toBe(404)
   })
 
   it('stringifies non-string detail (validation errors)', async () => {
