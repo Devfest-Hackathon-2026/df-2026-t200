@@ -6,16 +6,34 @@ import { step2 } from '../test/fixtures'
 import { Step2Walkthrough } from './Step2Walkthrough'
 
 describe('Step2Walkthrough', () => {
-  it('does not move the PDF just by opening the step', () => {
+  it('highlights the first stage evidence once when the step is opened, without switching views', () => {
     const jump = vi.fn()
-    render(
+    const { rerender } = render(
       <JumpContext.Provider value={jump}>
         <Step2Walkthrough data={step2} />
       </JumpContext.Provider>,
     )
-    expect(jump).not.toHaveBeenCalled()
+    expect(jump).toHaveBeenCalledTimes(1)
+    expect(jump).toHaveBeenCalledWith(2, 'we embed tokens', { switchView: false })
     expect(screen.getByText('全体構成')).toBeInTheDocument()
     expect(screen.getByText('1 / 2')).toBeInTheDocument()
+    // 解析中の定期取得でデータが新しいオブジェクトになっても、もう一度は移動しない
+    rerender(
+      <JumpContext.Provider value={jump}>
+        <Step2Walkthrough data={{ ...step2, stages: [...step2.stages] }} />
+      </JumpContext.Provider>,
+    )
+    expect(jump).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not move the PDF on open when the first stage has no evidence or figure', () => {
+    const jump = vi.fn()
+    render(
+      <JumpContext.Provider value={jump}>
+        <Step2Walkthrough data={{ ...step2, stages: [step2.stages[1]] }} />
+      </JumpContext.Provider>,
+    )
+    expect(jump).not.toHaveBeenCalled()
   })
 
   it('jumps the PDF to the evidence of the stage the student moves to', async () => {
@@ -25,6 +43,7 @@ describe('Step2Walkthrough', () => {
         <Step2Walkthrough data={step2} />
       </JumpContext.Provider>,
     )
+    jump.mockClear() // 開いたときの強調は別のテストで確かめる
     await userEvent.click(screen.getByRole('button', { name: '次の段階 →' }))
     // 段階2には根拠も図表もないので移動しない
     expect(jump).not.toHaveBeenCalled()

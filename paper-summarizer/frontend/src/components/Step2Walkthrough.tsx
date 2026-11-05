@@ -1,20 +1,36 @@
-import { useState } from 'react'
-import type { Step2 } from '../api'
-import { EvidenceList, PageChip, useJump } from '../jump'
+import { useEffect, useRef, useState } from 'react'
+import type { Stage, Step2 } from '../api'
+import { EvidenceList, PageChip, useJump, type JumpFn, type JumpOptions } from '../jump'
 import { Tex } from './Tex'
+
+/** 段階の根拠（なければ最初の図表のページ）へ PDF を移動して強調する。どちらもなければ何もしない */
+function jumpToStage(jump: JumpFn, stage: Stage | undefined, options?: JumpOptions) {
+  const ev = stage?.evidence?.[0]
+  const page = ev?.page ?? stage?.figures?.[0]?.page
+  if (page == null) return
+  if (options) jump(page, ev?.quote, options)
+  else if (ev) jump(page, ev.quote)
+  else jump(page)
+}
 
 export function Step2Walkthrough({ data }: { data: Step2 }) {
   const [i, setI] = useState(0)
   const jump = useJump()
   const stage = data.stages[i]
 
-  // 学生が段階を移動したときだけ、左の PDF を説明の根拠箇所へ移動して強調する（タブを開いただけでは動かさない）
+  // Step 2 を開いたときに1回だけ、最初の段階の根拠を強調する。
+  // 解析中の定期取得で data が新しくなっても繰り返さない。狭い画面では「解説」の表示のまま、PDF 側だけ準備する
+  const openedRef = useRef(false)
+  useEffect(() => {
+    if (openedRef.current) return
+    openedRef.current = true
+    jumpToStage(jump, data.stages[0], { switchView: false })
+  }, [jump, data.stages])
+
+  // 学生が段階を移動したときは、その段階の根拠へ移動する（狭い画面では PDF を表示する）
   const goTo = (k: number) => {
     setI(k)
-    const next = data.stages[k]
-    const ev = next?.evidence?.[0]
-    if (ev) jump(ev.page, ev.quote)
-    else if (next?.figures?.[0]) jump(next.figures[0].page)
+    jumpToStage(jump, data.stages[k])
   }
 
   if (!stage) return <p className="muted">ウォークスルーを生成できませんでした。</p>

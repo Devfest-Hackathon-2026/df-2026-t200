@@ -76,16 +76,32 @@ describe('App', () => {
     expect(step1Tab).toHaveFocus()
   })
 
-  it('clears the PDF highlight when switching steps', async () => {
+  it('clears the previous highlight and then highlights the first Step 2 stage when Step 2 opens', async () => {
     window.location.hash = `#/paper/${paper.id}`
     vi.spyOn(api, 'health').mockResolvedValue(health)
     vi.spyOn(api, 'get').mockResolvedValue(paper)
     render(<App />)
     await screen.findByText('問題A')
     viewer.clearHighlight.mockClear()
+    viewer.jumpTo.mockClear()
     await userEvent.click(screen.getByRole('tab', { name: /コアロジック/ }))
     expect(viewer.clearHighlight).toHaveBeenCalledTimes(1)
-    expect(viewer.jumpTo).not.toHaveBeenCalled()
+    expect(viewer.jumpTo).toHaveBeenCalledWith(2, 'we embed tokens')
+    expect(viewer.clearHighlight.mock.invocationCallOrder[0]).toBeLessThan(viewer.jumpTo.mock.invocationCallOrder[0])
+  })
+
+  it('keeps the explanation in view on narrow screens when Step 2 highlights its first stage', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList)
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    const { container } = render(<App />)
+    await screen.findByText('問題A')
+    viewer.jumpTo.mockClear()
+    await userEvent.click(screen.getByRole('tab', { name: /コアロジック/ }))
+    // PDF の移動は予約されるが、画面は解説のまま（学生が PDF タブを開いたときに強調が見える）
+    expect(viewer.jumpTo).toHaveBeenCalledWith(2, 'we embed tokens')
+    expect(container.querySelector('.workspace')).toHaveClass('show-explain')
   })
 
   it('switches between the PDF and the explanation on narrow screens', async () => {
