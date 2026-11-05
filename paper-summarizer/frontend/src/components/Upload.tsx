@@ -12,9 +12,6 @@ const STATUS_LABEL: Record<string, string> = {
 
 const LEVEL_LABEL: Record<Level, string> = { undergrad: '学部生向け', grad: '大学院生向け' }
 
-/** 履歴のマグネットの色分け（文字の状態表示と併せて使う） */
-const magnetFor = (status: string) => (status === 'done' ? 'blue' : status === 'failed' ? 'black' : 'yellow')
-
 /** 一覧に出す日時（ブラウザの時刻で YYYY/MM/DD HH:mm）。読めない値は出さない */
 function formatDate(iso: string): string {
   const d = new Date(iso)
@@ -125,28 +122,30 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
             {error}
           </div>
         )}
-      </div>
 
-      {papers.length > 0 && (
-        <section className="history">
-          <h2>これまでの論文</h2>
-          <ul>
-            {papers.map((p) => (
-              <li key={p.id}>
-                <button type="button" onClick={() => onOpen(p.id)}>
-                  <span className={`magnet ${magnetFor(p.status)}`} aria-hidden="true" />
-                  <span className="history-title">{p.title || p.filename}</span>
-                  <span className="history-meta">
-                    {formatDate(p.created_at) && <span>{formatDate(p.created_at)}</span>}
-                    {p.level && <span>{LEVEL_LABEL[p.level]}</span>}
-                  </span>
-                  <span className={`status ${p.status}`}>{STATUS_LABEL[p.status] ?? p.status}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        {papers.length > 0 && (
+          <section className="history" aria-labelledby="history-title">
+            <h2 id="history-title">これまでの論文</h2>
+            <div className="history-sheet sheet">
+              <span className="magnet blue" aria-hidden="true" />
+              <ul>
+                {papers.map((p) => (
+                  <li key={p.id}>
+                    <button type="button" onClick={() => onOpen(p.id)}>
+                      <span className="history-title">{p.title || p.filename}</span>
+                      <span className="history-meta">
+                        {formatDate(p.created_at) && <span>{formatDate(p.created_at)}</span>}
+                        {p.level && <span>{LEVEL_LABEL[p.level]}</span>}
+                        <span className={`status ${p.status}`}>{STATUS_LABEL[p.status] ?? p.status}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   )
 }
