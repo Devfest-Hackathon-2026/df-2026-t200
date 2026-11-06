@@ -484,24 +484,37 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 .upload-page {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 20px 16px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 760px) 340px;
+  /* 行の高さを画面に合わせ、はみ出す分は各列の中でスクロールする */
+  grid-template-rows: minmax(0, 1fr);
+  justify-content: center;
+  gap: 64px;
+  padding: 48px 64px 0 72px;
 }
 .upload-main {
   min-width: 0;
-  max-width: 760px;
-  margin: 0 auto;
+  min-height: 0;
+  /* 縦に短い画面でも、エラーの表示まで列の中でスクロールして見られる */
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 22px;
+  /* フォーカスの枠が切れないよう、内側に少し余白を取る */
+  padding: 4px 6px 28px;
 }
 .hero h1 {
-  font-size: 2.4rem;
+  font-size: 2rem;
   margin: 0 0 10px;
+}
+.hero h1 span {
+  display: inline-block;
 }
 .hero p {
   margin: 0;
   max-width: 38em;
+  text-wrap: pretty;
   font-size: 1rem;
   line-height: 1.8;
 }
@@ -549,7 +562,7 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 .dropzone {
   border: 3px dashed var(--blue);
   border-radius: 8px;
-  min-height: 260px;
+  min-height: 300px;
   padding: 32px 16px;
   display: flex;
   flex-direction: column;
@@ -562,6 +575,9 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 }
 .dropzone strong {
   font-size: 1.1rem;
+}
+.drop-title span {
+  display: inline-block;
 }
 .dropzone:hover,
 .dropzone.drag {
@@ -577,65 +593,97 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 .drop-cta {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 48px;
   margin-top: 6px;
-  padding: 0 26px;
+  padding: 0 28px;
+  border: 0;
   border-radius: 6px;
   background: var(--blue);
   color: #fff;
   font-weight: 700;
+  cursor: pointer;
+}
+.drop-cta:hover {
+  background: var(--blue-dark);
+}
+.drop-cta[aria-disabled='true'] {
+  cursor: progress;
+}
+/* これまでの論文: 1件ずつマグネットで留めたカード。長くなったら列の中でスクロールする */
+.history {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .history h2 {
-  margin: 4px 0 14px;
-}
-/* 履歴は1枚の紙に1行ずつ書く。長くなったら紙の中でスクロールする */
-.history-sheet {
-  padding: 10px 0 4px;
+  margin: 0 0 6px;
+  font-size: 1.5rem;
 }
 .history ul {
   list-style: none;
-  padding: 0;
   margin: 0;
-  max-height: 264px;
+  /* マグネットと影が切れないよう、スクロールする箱の内側に余白を取る */
+  padding: 22px 6px 28px;
+  min-height: 0;
   overflow: auto;
-}
-.history li + li {
-  border-top: 1px solid var(--line);
-}
-.history li button {
-  width: 100%;
-  min-height: 52px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 28px;
+}
+.paper-card {
+  display: block;
+  width: 100%;
   text-align: left;
-  border: none;
-  background: none;
-  padding: 8px 20px;
+  border: 0;
+  padding: 26px 22px 18px;
   cursor: pointer;
+  color: var(--ink);
 }
-.history li button:hover {
-  background: var(--blue-soft);
+.paper-card:hover {
+  box-shadow:
+    var(--sheet-shadow),
+    0 0 0 2px var(--blue);
 }
-.history li button:focus-visible {
-  outline-offset: -3px;
-}
-.history-title {
-  flex: 1 1 260px;
-  min-width: 0;
+.paper-card-title {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 1.05rem;
   font-weight: 700;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
-.history-meta {
+.paper-card-meta {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
   gap: 2px 14px;
+  margin-bottom: 10px;
   font-size: 0.875rem;
   color: var(--ink-2);
+}
+.paper-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.paper-card-open {
+  margin-left: auto;
+  font-size: 0.875rem;
+  color: var(--blue);
+  text-decoration: underline;
+}
+.progress {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+}
+.progress span {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #d5d8db;
+}
+.progress span.filled {
+  background: var(--blue);
 }
 .status {
   font-size: 0.875rem;
@@ -1632,10 +1680,23 @@ body.pane-resizing .workspace > :not(.pane-divider) {
     display: none;
   }
   .upload-page {
+    display: block;
+    overflow: auto;
     padding: 12px;
   }
+  .upload-main {
+    overflow: visible;
+    padding: 0 0 12px;
+  }
+  .history {
+    margin-top: 12px;
+  }
+  .history ul {
+    overflow: visible;
+    gap: 22px;
+  }
   .hero h1 {
-    font-size: 1.6rem;
+    font-size: 1.45rem;
   }
   .dropzone {
     min-height: 200px;

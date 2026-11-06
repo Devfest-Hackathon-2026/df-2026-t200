@@ -161,6 +161,7 @@ def list_papers() -> list[dict[str, Any]]:
             "filename": p["filename"],
             "title": (p.get("results", {}).get("step1") or {}).get("title"),
             "status": p["status"],
+            "level": p.get("level", "undergrad"),
             "created_at": p["created_at"],
         }
         for p in _iter_papers()

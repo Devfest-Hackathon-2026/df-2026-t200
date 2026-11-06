@@ -58,7 +58,7 @@ describe('Upload', () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     render(<Upload health={health} onOpen={vi.fn()} />)
     const level = screen.getByRole('radiogroup', { name: '説明のレベル' })
-    const drop = screen.getByRole('button', { name: /論文のPDFを選ぶ/ })
+    const drop = screen.getByRole('button', { name: 'PDFを選択' })
     expect(level.compareDocumentPosition(drop) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
@@ -70,9 +70,49 @@ describe('Upload', () => {
     ])
     render(<Upload health={health} onOpen={vi.fn()} />)
     const a = await screen.findByRole('button', { name: /Same Paper.*大学院生向け/ })
-    expect(a).toHaveTextContent(/2026\/11\/0[56]/)
-    expect(screen.getByRole('button', { name: /Same Paper.*学部生向け/ })).toHaveTextContent(/2026\/11\/0[45]/)
+    expect(a).toHaveTextContent(/11月[45]日/)
+    expect(a).toHaveTextContent('続きから読む')
+    expect(screen.getByRole('button', { name: /Same Paper.*学部生向け/ })).toHaveTextContent(/11月[34]日/)
     expect(screen.getByRole('button', { name: /c\.pdf/ })).toHaveTextContent('失敗')
+  })
+
+  it('shows how far the analysis has gone on each card', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue([
+      { id: 'p', filename: 'draft.pdf', title: null, status: 'processing_step2', created_at: '2026-11-04T09:30:00+00:00', level: 'grad' },
+    ])
+    const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
+    const card = await screen.findByRole('button', { name: /draft\.pdf/ })
+    expect(card).toHaveTextContent('解析中（2/3）')
+    expect(card).not.toHaveTextContent('続きから読む')
+    expect(container.querySelectorAll('.progress span.filled')).toHaveLength(2)
+    expect(container.querySelectorAll('.progress span')).toHaveLength(3)
+    // 状態はマグネットの色でも示す（解析中は黄）
+    expect(card.querySelector('.magnet')).toHaveClass('yellow')
+  })
+
+  it('adds the year only for papers from an earlier year and hides unknown levels', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue([
+      { id: 'o', filename: 'old.pdf', title: 'Old', status: 'done', created_at: '2020-03-02T09:30:00+00:00', level: 'phd' as never },
+    ])
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    const card = await screen.findByRole('button', { name: /Old/ })
+    expect(card).toHaveTextContent(/2020年3月2日/)
+    expect(card.querySelectorAll('.paper-card-meta > span')).toHaveLength(1)
+  })
+
+  it('tells the student what to load and to check the AI against the paper', () => {
+    vi.spyOn(api, 'list').mockResolvedValue([])
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    expect(screen.getByRole('heading', { level: 1, name: '英語の論文を1本、PDFで読み込んでください' })).toBeVisible()
+    expect(screen.getByText(/AIの解説は間違えることがあるので、ページを開いて原文で確かめながら読んでください。/)).toBeInTheDocument()
+  })
+
+  it('puts the drop zone hint and a real button in the drop zone', () => {
+    vi.spyOn(api, 'list').mockResolvedValue([])
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    expect(screen.getByText('論文のPDFをドロップ、')).toBeInTheDocument()
+    expect(screen.getByText('またはクリックして選択')).toBeInTheDocument()
+    expect(screen.getByText('テキストを含むPDF・1MBまで')).toBeInTheDocument()
   })
 
   it('ignores drops while an upload is running', async () => {
@@ -81,7 +121,7 @@ describe('Upload', () => {
     const upload = vi.spyOn(api, 'upload').mockReturnValue(new Promise((r) => (finish = r)))
     const onOpen = vi.fn()
     render(<Upload health={health} onOpen={onOpen} />)
-    const drop = screen.getByRole('button', { name: /論文のPDFを選ぶ/ })
+    const drop = screen.getByRole('button', { name: 'PDFを選択' })
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
     fireEvent.drop(drop, { dataTransfer: { files: [file] } })
     await screen.findByText('アップロードしています…')
@@ -103,12 +143,13 @@ describe('Upload', () => {
     await waitFor(() => expect(upload).toHaveBeenCalledTimes(2))
   })
 
-  it('opens the file dialog with Space without scrolling the page', () => {
+  it('opens the file dialog from the button and from a click anywhere in the drop zone, once each', async () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
     const click = vi.spyOn(fileInput(container), 'click')
-    const notPrevented = fireEvent.keyDown(screen.getByRole('button', { name: /論文のPDFを選ぶ/ }), { key: ' ' })
-    expect(notPrevented).toBe(false)
-    expect(click).toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'PDFを選択' }))
+    expect(click).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByText('またはクリックして選択'))
+    expect(click).toHaveBeenCalledTimes(2)
   })
 })

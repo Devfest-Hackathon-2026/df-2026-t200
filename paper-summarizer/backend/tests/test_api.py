@@ -102,6 +102,13 @@ def test_list_papers_includes_uploaded(client, sample_pdf):
     assert [p["id"] for p in client.get("/api/papers").json()] == [pid]
 
 
+def test_list_papers_shows_the_level(client, sample_pdf):
+    # アップロード画面の「これまでの論文」に、どのレベルで解析したかを出す
+    pid = _upload(client, sample_pdf, level="grad").json()["id"]
+    _wait_done(client, pid)
+    assert client.get("/api/papers").json()[0]["level"] == "grad"
+
+
 def test_get_pdf_returns_file(client, sample_pdf):
     pid = _upload(client, sample_pdf).json()["id"]
     res = client.get(f"/api/papers/{pid}/pdf")
