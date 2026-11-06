@@ -1,0 +1,15 @@
+# 秘密情報とローカルのデータはイメージに入れない
+.env
+*.env.local
+data/
+.e2e-data/
+
+.venv/
+__pycache__/
+*.pyc
+tests/
+scripts/
+.coverage
+coverage.xml
+.pytest_cache/
+.ruff_cache/

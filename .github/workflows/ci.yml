@@ -96,3 +96,28 @@ jobs:
             paper-summarizer/frontend/playwright-report
             paper-summarizer/frontend/test-results
           retention-days: 7
+
+  docker:
+    name: docker (Cloud Run 用イメージのビルドと起動)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: paper-summarizer/backend
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: docker build -t paper-summarizer-api .
+      - name: Run (Cloud Run と同じく PORT を渡し、Gemini を呼ばないデモモードで起動)
+        run: docker run -d --name api -p 8080:8080 -e PORT=8080 -e DEMO_MODE=1 paper-summarizer-api
+      - name: Health check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/api/health; then echo; break; fi
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/api/health | grep -q '"demo_mode":true'
+          curl -fsS http://localhost:8080/api/papers
+      - name: Logs
+        if: always()
+        run: docker logs api

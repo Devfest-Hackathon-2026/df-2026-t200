@@ -67,6 +67,8 @@ backend/   FastAPI + google-genai（Gemini に PDF をネイティブ入力）+ 
 frontend/  Vite + React + TypeScript + pdf.js + KaTeX
 ```
 
+Google Cloud（Cloud RunとFirebase Hosting）へのデプロイ手順は[DEPLOY.md](DEPLOY.md)にまとめています。最初は保存先をファイルのまま、Cloud RunにマウントしたCloud Storageのバケットに置きます。
+
 本番（Google Cloud）への置き換え:
 
 | ローカル | 本番 |
