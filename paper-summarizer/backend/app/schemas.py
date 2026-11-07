@@ -153,6 +153,37 @@ class AskRequest(BaseModel):
     current_step: int | None = None
 
 
+# ---------- 誤り探しモード ----------
+
+
+class QuizRewrite(BaseModel):
+    id: str = Field(description="渡された文の id（そのまま返す）")
+    altered: str = Field(description="元の文の changed_from を changed_to に1か所だけ置き換えた文。ほかは1文字も変えない")
+    changed: str = Field(description="何をどう変えたか（例: 数値を 8 から 12 に変えた）を1文で")
+    changed_from: str = Field(description="元の文の中の、変える語句（元の文にそのままある文字列）")
+    changed_to: str = Field(description="changed_from の代わりに入れた語句")
+    quote_span: str = Field(
+        description="根拠の引用の中の、changed_from の事実を述べている部分。引用の一部をそのまま（言い換えず、引用と同じ言語で）抜き出す。20文字以上。changed_to を含まない"
+    )
+
+
+class QuizRewrites(BaseModel):
+    rewrites: list[QuizRewrite]
+
+
+class QuizCreateRequest(BaseModel):
+    force: bool = False  # True なら、問題があっても新しく作る（上限に数える）
+
+
+class QuizPick(BaseModel):
+    id: str = Field(min_length=1, max_length=20)
+    page: int | None = Field(default=None, ge=1, le=100000)
+
+
+class QuizAnswerRequest(BaseModel):
+    picks: list[QuizPick] = Field(max_length=20)
+
+
 # ---------- 保存する論文の記録 ----------
 
 

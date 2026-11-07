@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api, ApiError } from './api'
 import App from './App'
-import { paper } from './test/fixtures'
+import { paper, quiz } from './test/fixtures'
 
 const viewer = vi.hoisted(() => ({ jumpTo: vi.fn(), clearHighlight: vi.fn() }))
 // lazy な PdfViewer がまだ読み込み中（マウント前）の状態を作るための関門
@@ -70,13 +70,30 @@ describe('App', () => {
     expect(step2Tab).toHaveAttribute('aria-selected', 'true')
     expect(step2Tab).toHaveFocus()
     await userEvent.keyboard('{End}')
-    expect(screen.getByRole('tab', { name: /批判的思考/ })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: /誤り探し/ })).toHaveFocus()
     await userEvent.keyboard('{ArrowRight}')
     expect(step1Tab).toHaveAttribute('aria-selected', 'true')
-    await userEvent.keyboard('{ArrowLeft}')
+    await userEvent.keyboard('{ArrowLeft}{ArrowLeft}')
     expect(screen.getByRole('tab', { name: /批判的思考/ })).toHaveAttribute('aria-selected', 'true')
     await userEvent.keyboard('{Home}')
     expect(step1Tab).toHaveFocus()
+  })
+
+  it('keeps quiz sentences out of Step 1-3 and shows them only in the spot-the-error tab', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    const getQuiz = vi.spyOn(api, 'getQuiz').mockResolvedValue({ quiz })
+    render(<App />)
+    await screen.findByText('問題A')
+    const sentence = quiz.items[0].text
+    for (const name of [/前提知識マップ/, /手法の流れと図表/, /批判的思考/]) {
+      await userEvent.click(screen.getByRole('tab', { name }))
+      expect(screen.queryByText(sentence)).not.toBeInTheDocument()
+    }
+    expect(getQuiz).not.toHaveBeenCalled() // 別のタブを開くだけでは問題を読み込まない
+    await userEvent.click(screen.getByRole('tab', { name: /誤り探し/ }))
+    expect(await screen.findByText(sentence)).toBeInTheDocument()
   })
 
   it('clears the previous highlight and then highlights the first Step 2 stage when Step 2 opens', async () => {

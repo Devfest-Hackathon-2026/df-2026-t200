@@ -18,8 +18,23 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from . import config, store
 from .pdf_utils import TooManyPages, TooMuchText, extract_pages
-from .schemas import AskRequest
-from .services import AskFailed, PaperNotFound, PaperService, QuotaExceeded, retryable
+from .schemas import AskRequest, QuizAnswerRequest, QuizCreateRequest
+from .services import (
+    AskFailed,
+    PaperNotFound,
+    PaperService,
+    QuizAlreadyAnswered,
+    QuizBadAnswer,
+    QuizBusy,
+    QuizFailed,
+    QuizNotAnswered,
+    QuizNotFound,
+    QuizNotReady,
+    QuizTooSmall,
+    QuotaExceeded,
+    RateLimited,
+    retryable,
+)
 
 log = logging.getLogger("paper")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -43,7 +58,7 @@ QUOTA_MESSAGE = "本日の利用上限に達しました。時間をおいてか
 
 
 def _public(paper: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in paper.items() if k not in ("sha256", "owner")}
+    return {k: v for k, v in paper.items() if k not in ("sha256", "owner", "quiz")}  # quiz は答えを含むので、専用の API だけが返す
 
 
 def _load_or_404(paper_id: str) -> dict[str, Any]:
@@ -171,3 +186,50 @@ def ask(paper_id: str, req: AskRequest, service: Service) -> dict[str, Any]:
     except AskFailed as e:
         raise HTTPException(502, e.message) from e
     return {"messages": messages}
+
+
+@app.get("/api/papers/{paper_id}/quiz")
+def get_quiz(paper_id: str, service: Service) -> dict[str, Any]:
+    _load_or_404(paper_id)
+    try:
+        return {"quiz": service.get_quiz(paper_id)}
+    except PaperNotFound as e:
+        raise HTTPException(404, "論文が見つかりません") from e
+
+
+@app.post("/api/papers/{paper_id}/quiz")
+def create_quiz(paper_id: str, service: Service, req: QuizCreateRequest | None = None) -> dict[str, Any]:
+    _load_or_404(paper_id)
+    try:
+        return {"quiz": service.create_quiz(paper_id, force=bool(req and req.force))}
+    except PaperNotFound as e:
+        raise HTTPException(404, "論文が見つかりません") from e
+    except QuizNotReady as e:
+        raise HTTPException(409, "解析が終わってから誤り探しを始められます") from e
+    except QuizTooSmall as e:
+        raise HTTPException(409, "根拠を確認できた項目が少ないため、この論文では誤り探しの問題を作れません") from e
+    except QuizNotAnswered as e:
+        raise HTTPException(409, "先に答え合わせをしてください") from e
+    except QuizBusy as e:
+        raise HTTPException(409, "問題を作っています。少し待ってからもう一度お試しください") from e
+    except RateLimited as e:
+        raise HTTPException(429, "問題を作る回数が多すぎます。1分ほど待ってからもう一度お試しください。") from e
+    except QuotaExceeded as e:
+        raise HTTPException(429, QUOTA_MESSAGE) from e
+    except QuizFailed as e:
+        raise HTTPException(502, e.message) from e
+
+
+@app.post("/api/papers/{paper_id}/quiz/{quiz_id}/answer")
+def answer_quiz(paper_id: str, quiz_id: str, req: QuizAnswerRequest, service: Service) -> dict[str, Any]:
+    _load_or_404(paper_id)
+    try:
+        return {"quiz": service.answer_quiz(paper_id, quiz_id, req.picks)}
+    except PaperNotFound as e:
+        raise HTTPException(404, "論文が見つかりません") from e
+    except QuizNotFound as e:
+        raise HTTPException(404, "この問題は見つかりません。新しい問題に置き換わった可能性があります") from e
+    except QuizAlreadyAnswered as e:
+        raise HTTPException(409, "この問題にはすでに回答しています") from e
+    except QuizBadAnswer as e:
+        raise HTTPException(400, "回答の内容が正しくありません") from e

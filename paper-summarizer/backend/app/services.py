@@ -6,6 +6,7 @@ run_analysis(paper_id) は何度呼ばれても同じ結果になる（Cloud Tas
 """
 
 import logging
+import random
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -13,11 +14,13 @@ from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any, Protocol
 
-from . import config, errors, mock, store
+from pydantic import ValidationError
+
+from . import config, errors, mock, quiz, store
 from .pdf_utils import extract_pages, normalize, verify_all
 from .quota import DailyQuota
 from .ratelimit import RateLimiter
-from .schemas import Paper
+from .schemas import Paper, QuizPick
 
 log = logging.getLogger("paper")
 
@@ -39,6 +42,7 @@ class Analyzer(Protocol):
     def step2(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]: ...
     def step3(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]: ...
     def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]: ...
+    def rewrite(self, paper: Paper, targets: list[dict[str, Any]]) -> dict[str, Any]: ...
 
 
 class DemoAnalyzer:
@@ -55,6 +59,9 @@ class DemoAnalyzer:
 
     def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]:
         return mock.ask(src.pages, question)
+
+    def rewrite(self, paper: Paper, targets: list[dict[str, Any]]) -> dict[str, Any]:
+        return mock.quiz_rewrite(targets, paper.lang)
 
 
 class GeminiAnalyzer:
@@ -87,6 +94,9 @@ class GeminiAnalyzer:
 
     def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]:
         return self._gemini().ask(src.pdf_bytes, src.paper.level, question, history, current_step, lang=src.paper.lang, cli=self._cli())
+
+    def rewrite(self, paper: Paper, targets: list[dict[str, Any]]) -> dict[str, Any]:
+        return self._gemini().quiz_rewrite(targets, paper.level, lang=paper.lang, cli=self._cli())
 
 
 def _generate_step(analyzer: Analyzer, key: str, src: PaperSource, results: dict[str, Any]) -> dict[str, Any]:
@@ -122,6 +132,44 @@ class PaperNotFound(Exception):
     """処理の途中で論文の記録が消えた。"""
 
 
+class RateLimited(Exception):
+    """論文ごとの1分あたりの回数制限に達した。"""
+
+
+class QuizNotReady(Exception):
+    """解析が終わっていない（誤りの元になる Step 2・3 の結果が揃っていない）。"""
+
+
+class QuizTooSmall(Exception):
+    """根拠を照合できた項目が少なく、問題を作れない。"""
+
+
+class QuizNotAnswered(Exception):
+    """今の問題にまだ回答していない（答える前に作り直すと、変わった文から誤りが分かってしまう）。"""
+
+
+class QuizBusy(Exception):
+    """この論文の問題を作っている最中。"""
+
+
+class QuizNotFound(Exception):
+    """問題が無い、または新しい問題に置き換わっている。"""
+
+
+class QuizAlreadyAnswered(Exception):
+    pass
+
+
+class QuizBadAnswer(Exception):
+    pass
+
+
+class QuizFailed(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
 class AskFailed(Exception):
     def __init__(self, message: str):
         super().__init__(message)
@@ -134,6 +182,7 @@ class PaperService:
         analyzers: Mapping[bool, Analyzer] | None = None,
         max_jobs: int = 2,
         starter: Callable[[str], None] | None = None,
+        rng: random.Random | None = None,
     ):
         # キーは論文の demo フラグ
         self.analyzers: Mapping[bool, Analyzer] = analyzers or {True: DemoAnalyzer(), False: GeminiAnalyzer()}
@@ -144,11 +193,16 @@ class PaperService:
         self._starter = starter or self._start_thread
         self.ask_limiter = RateLimiter(config.ASK_RATE_PER_MIN, 60)
         self.retry_limiter = RateLimiter(config.RETRY_RATE_PER_MIN, 60)
+        self.quiz_limiter = RateLimiter(config.QUIZ_RATE_PER_MIN, 60)
+        self._rng = rng or random.SystemRandom()
+        self._quiz_making: set[str] = set()  # 問題を作っている最中の論文（同じ論文の同時の作成で上限を二重に使わない）
+        self._quiz_making_lock = threading.Lock()
         # サービス全体の上限（論文を増やしても回避できない）
         self.ask_global_limiter = RateLimiter(config.ASK_GLOBAL_PER_MIN, 60)
         self.upload_quota = DailyQuota("uploads", config.MAX_UPLOADS_PER_DAY, directory=config.QUOTA_DIR)
         self.analysis_quota = DailyQuota("analyses", config.MAX_ANALYSES_PER_DAY, directory=config.QUOTA_DIR)
         self.ask_quota = DailyQuota("asks", config.MAX_ASKS_PER_DAY, directory=config.QUOTA_DIR)
+        self.quiz_quota = DailyQuota("quizzes", config.MAX_QUIZZES_PER_DAY, directory=config.QUOTA_DIR)
 
     # ---------- 材料 ----------
 
@@ -293,3 +347,104 @@ class PaperService:
             {"role": "assistant", "text": out["answer"], **{k: out[k] for k in ("source", "evidence", "confidence")}, "created_at": store.now()},
         )
         return updated["messages"]
+
+    # ---------- 誤り探しモード ----------
+
+    def get_quiz(self, paper_id: str) -> dict[str, Any] | None:
+        """保存済みの問題を公開用の形で返す。無ければ None。Gemini は呼ばない。"""
+        raw = store.load(paper_id)
+        if raw is None:
+            raise PaperNotFound(paper_id)
+        return quiz.public_view(raw["quiz"]) if raw.get("quiz") else None
+
+    def create_quiz(self, paper_id: str, force: bool = False) -> dict[str, Any]:
+        """誤り探しの問題を作って保存する。force でなく問題があれば、それをそのまま返す（上限に数えない）。
+
+        順序: 解析済みか → 既存の問題 → 元にできる文があるか → 論文ごとの回数 → 1日の上限 → Gemini。
+        断る場合に上限を使わないよう、費用のかかる確認ほど後ろに置く。
+        """
+        raw = store.load(paper_id)
+        if raw is None:
+            raise PaperNotFound(paper_id)
+        paper = Paper.model_validate(raw)
+        if paper.status != "done" or not paper.results.get("step2") or not paper.results.get("step3"):
+            raise QuizNotReady
+        existing = raw.get("quiz")
+        if existing and not force:
+            return quiz.public_view(existing)
+        if existing and existing.get("submitted_at") is None:
+            raise QuizNotAnswered
+        with self._quiz_making_lock:
+            if paper_id in self._quiz_making:
+                raise QuizBusy
+            self._quiz_making.add(paper_id)
+        try:
+            return self._make_quiz(paper, existing)
+        finally:
+            with self._quiz_making_lock:
+                self._quiz_making.discard(paper_id)
+
+    def _make_quiz(self, paper: Paper, existing: dict[str, Any] | None) -> dict[str, Any]:
+        seq = (existing or {}).get("seq", 0) + 1
+        # デモモードは問題をいつも同じにする（e2e のため）。回数ごとには変える
+        rng = random.Random(seq) if paper.demo else self._rng
+        pool = quiz.candidates(paper.results, rng, require_overlap=not paper.demo)
+        if len(pool) < quiz.MIN_SENTENCES:
+            raise QuizTooSmall
+        if not self.quiz_limiter.allow(paper.id):
+            raise RateLimited
+        if not self.quiz_quota.take():
+            raise QuotaExceeded
+        picked, n_wrong = quiz.choose(pool, rng)
+        wrong_ids = {c["id"] for c in rng.sample(picked, n_wrong)}
+        targets = [{"id": c["id"], "text": c["text"], "quote": c["quote"]} for c in picked if c["id"] in wrong_ids]
+        rewrites = self._rewrite(paper, targets)
+        record = quiz.build(picked, wrong_ids, rewrites, rng, seq, store.now())
+        saved: dict[str, Any] = {}
+
+        def put(p: dict[str, Any]) -> dict[str, Any] | None:
+            # 読んだときと同じ seq のときだけ書く（compare-and-set）。先に別の要求が保存していたら、そちらを残す
+            current = p.get("quiz")
+            if current is not None and current.get("seq", 0) != seq - 1:
+                saved.update(current)
+                return None
+            return {**p, "quiz": record}
+
+        store.mutate(paper.id, put)
+        return quiz.public_view(saved or record)
+
+    def _rewrite(self, paper: Paper, targets: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
+        """書き換えを作らせて検証する。使えない出力は捨てて、もう1回だけ作り直す。"""
+        analyzer = self.analyzer_for(paper)
+        for attempt in (1, 2):
+            try:
+                return quiz.validate_rewrites(analyzer.rewrite(paper, targets), targets)
+            except (quiz.QuizInvalid, ValidationError, errors.EmptyResponseError) as e:
+                log.warning("quiz rewrite rejected paper=%s attempt=%d: %s", paper.id, attempt, type(e).__name__)
+            except Exception as e:  # noqa: BLE001
+                log.exception("quiz generation failed paper=%s", paper.id)
+                raise QuizFailed(errors.user_message(e)) from e
+        raise QuizFailed(errors.BAD_RESPONSE)
+
+    def answer_quiz(self, paper_id: str, quiz_id: str, picks: list[QuizPick]) -> dict[str, Any]:
+        """回答を採点して保存する。1つの問題には1回しか回答できない（答えを見てからやり直せないように）。"""
+        out: dict[str, Any] = {}
+
+        def apply(p: dict[str, Any]) -> dict[str, Any]:
+            q = p.get("quiz")
+            if not q or q["id"] != quiz_id:
+                raise QuizNotFound(quiz_id)
+            if q.get("submitted_at") is not None:
+                raise QuizAlreadyAnswered(quiz_id)
+            ids = [pick.id for pick in picks]
+            if len(set(ids)) != len(ids) or not set(ids) <= {i["id"] for i in q["items"]}:
+                raise QuizBadAnswer(quiz_id)
+            done = {**q, "submitted_at": store.now(), "result": quiz.score(q, picks)}
+            out.update(done)
+            return {**p, "quiz": done}
+
+        try:
+            store.mutate(paper_id, apply)
+        except KeyError as e:
+            raise PaperNotFound(paper_id) from e
+        return quiz.public_view(out)

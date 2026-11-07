@@ -20,6 +20,7 @@ SA_NAME="paper-summarizer-run"
 # 既定は審査期間の値。ふだんの値はアプリの既定（解析30・質問150）
 MAX_ANALYSES_PER_DAY="${MAX_ANALYSES_PER_DAY:-10}"
 MAX_ASKS_PER_DAY="${MAX_ASKS_PER_DAY:-50}"
+MAX_QUIZZES_PER_DAY="${MAX_QUIZZES_PER_DAY:-10}"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 # 版を固定する（2026-10-21 公開）
 FIREBASE="npx --yes firebase-tools@15.34.1"
@@ -149,7 +150,7 @@ deploy_api() {
     --execution-environment gen2 \
     ${MIN_FLAG[@]+"${MIN_FLAG[@]}"} --max-instances 1 \
     --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 --concurrency 20 \
-    --set-env-vars "GIT_SHA=${GIT_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,DATA_DIR=/data,MAX_ANALYSES_PER_DAY=${MAX_ANALYSES_PER_DAY},MAX_ASKS_PER_DAY=${MAX_ASKS_PER_DAY}" \
+    --set-env-vars "GIT_SHA=${GIT_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,DATA_DIR=/data,MAX_ANALYSES_PER_DAY=${MAX_ANALYSES_PER_DAY},MAX_ASKS_PER_DAY=${MAX_ASKS_PER_DAY},MAX_QUIZZES_PER_DAY=${MAX_QUIZZES_PER_DAY}" \
     --clear-volumes --clear-volume-mounts \
     --add-volume "name=data,type=cloud-storage,bucket=${BUCKET}" \
     --add-volume-mount "volume=data,mount-path=/data" \
