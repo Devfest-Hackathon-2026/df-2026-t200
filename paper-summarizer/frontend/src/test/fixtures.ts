@@ -85,3 +85,37 @@ export const paper: Paper = {
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
+
+/** 流れ図つきの Step 2（段階は step2 と同じ2つ） */
+export const step2WithFlow: Step2 = {
+  ...step2,
+  flow: {
+    nodes: [
+      { id: 'in', label: '入力の単語', kind: 'input', shape: 'n×d', evidence: [{ page: 2, quote: 'we embed tokens', verified: true }] },
+      {
+        id: 'out',
+        label: '特徴量ベース手法とファインチューニング手法の確率',
+        kind: 'output',
+        shape: null,
+        evidence: [{ page: 5, quote: 'we output a distribution' }],
+      },
+    ],
+    edges: [{ from: 'in', to: 'out', label: 'Q, K, V' }],
+    frames: [
+      {
+        stage_index: 0,
+        active_nodes: ['in'],
+        active_edges: [],
+        caption: '単語をベクトルにする',
+        evidence: [{ page: 2, quote: 'we embed tokens' }],
+      },
+      {
+        stage_index: 1,
+        active_nodes: ['out'],
+        active_edges: ['in->out'],
+        caption: '語彙の確率を計算する',
+        evidence: [{ page: 6, quote: 'softmax over vocabulary' }],
+      },
+    ],
+  },
+}

@@ -34,7 +34,12 @@ export type Figure = {
   referenced_at: Evidence[]
 }
 export type Stage = { title: string; explanation: string; evidence: Evidence[]; figures: Figure[]; equations: Equation[] }
-export type Step2 = { overview: string; stages: Stage[] }
+export type FlowKind = 'input' | 'process' | 'output'
+export type FlowNode = { id: string; label: string; kind: FlowKind; shape: string | null; evidence: Evidence[] }
+export type FlowEdge = { from: string; to: string; label: string }
+export type FlowFrame = { stage_index: number; active_nodes: string[]; active_edges: string[]; caption: string; evidence: Evidence[] }
+export type Flow = { nodes: FlowNode[]; edges: FlowEdge[]; frames: FlowFrame[] }
+export type Step2 = { overview: string; stages: Stage[]; flow?: Flow | null }
 
 export type CriticalPoint = { text: string; origin: Origin; evidence: Evidence[] }
 export type Step3 = {
