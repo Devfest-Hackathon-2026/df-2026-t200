@@ -77,6 +77,7 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
             response_mime_type="application/json",
             response_schema=schema,
             temperature=0.2,
+            thinking_config=types.ThinkingConfig(thinking_level=config.THINKING_LEVEL) if config.THINKING_LEVEL else None,
         ),
     )
     if resp.parsed is not None:

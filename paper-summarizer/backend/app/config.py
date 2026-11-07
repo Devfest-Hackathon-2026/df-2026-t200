@@ -22,6 +22,20 @@ GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or 
 # モデルはハッカソン期間中にも入れ替わるため環境変数で差し替え可能にする。
 ANALYSIS_MODEL = os.getenv("ANALYSIS_MODEL", "gemini-3.6-flash")
 QA_MODEL = os.getenv("QA_MODEL", "gemini-3.6-flash")
+# 答える前に考える量。考えた分も出力トークンとして課金される。BERT（16ページ）で試すと、low は既定より
+# 解析が約25%速く約30%安く、引用の照合の結果は落ちなかった。空にするとモデルの既定に任せる
+THINKING_LEVELS = ("", "minimal", "low", "medium", "high")
+
+
+def thinking_level(raw: str) -> str:
+    """THINKING_LEVEL の値を小文字にそろえ、知らない値なら起動を止める。"""
+    value = raw.strip().lower()
+    if value not in THINKING_LEVELS:
+        raise ValueError(f"THINKING_LEVEL は {', '.join(repr(v) for v in THINKING_LEVELS)} のどれかにしてください（{raw!r}）")
+    return value
+
+
+THINKING_LEVEL = thinking_level(os.getenv("THINKING_LEVEL", "low"))
 
 # 認証情報がなければデモモード（サンプル解析結果）で動く。DEMO_MODE=1 で強制。
 DEMO_MODE = os.getenv("DEMO_MODE") == "1" or not (GOOGLE_CLOUD_PROJECT or GEMINI_API_KEY)

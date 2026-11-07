@@ -182,3 +182,34 @@ def test_fence_tags_stay_random_per_call(fake):
     gemini.ask(b"%PDF", "undergrad", "q", [], None, lang="en")
     tags = [re.search(r"<(question_[0-9a-f]{16})>", c["contents"][1]).group(1) for c in models.calls]
     assert tags[0] != tags[1]
+
+
+def test_generate_sets_thinking_level_from_config(fake, monkeypatch):
+    # 考える量（thinking）は出力として課金される。既定は low で、解析の費用と時間を下げる
+    monkeypatch.setattr(config, "THINKING_LEVEL", "low")
+    models = fake(mock.step1(PAGES, "a.pdf"))
+    gemini.step1(b"%PDF", "undergrad")
+    level = models.calls[0]["config"].thinking_config.thinking_level
+    assert str(getattr(level, "value", level)).lower() == "low"
+
+
+def test_generate_leaves_thinking_to_the_model_when_level_is_empty(fake, monkeypatch):
+    monkeypatch.setattr(config, "THINKING_LEVEL", "")
+    models = fake(mock.ask(PAGES, "q"))
+    gemini.ask(b"%PDF", "undergrad", "質問", [], None)
+    assert models.calls[0]["config"].thinking_config is None
+
+
+def test_thinking_level_defaults_to_low():
+    assert config.THINKING_LEVEL == "low"
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("low", "low"), (" LOW ", "low"), ("minimal", "minimal"), ("", ""), ("high", "high")])
+def test_thinking_level_is_normalized(raw, expected):
+    assert config.thinking_level(raw) == expected
+
+
+def test_unknown_thinking_level_fails_at_startup():
+    # 打ち間違いのまま動くと、Gemini の呼び出しがすべて失敗する。起動の時点で止める
+    with pytest.raises(ValueError, match="THINKING_LEVEL"):
+        config.thinking_level("lo")
