@@ -270,3 +270,24 @@ def test_results_from_an_older_analysis_version_are_analyzed_again():
     pid, reused = svc.create(data=data, pages=pdf_utils.extract_pages(data), filename="x.pdf", level="undergrad", sha256="h")
     assert reused is False
     assert started == [pid]
+
+
+def test_retry_of_an_older_version_starts_over_and_keeps_current_partial_results():
+    svc = PaperService(analyzers={True: FakeAnalyzer(), False: FakeAnalyzer()}, starter=lambda _pid: None)
+    old = _new_paper(demo=False, status="failed", results={"step1": {"old": True}}, analysis_version=config.ANALYSIS_VERSION - 1)
+    legacy = _new_paper(demo=False, status="failed", results={"step1": {"old": True}})  # 版の無い古い記録
+    current = _new_paper(demo=False, status="failed", results={"step1": {"new": True}}, analysis_version=config.ANALYSIS_VERSION)
+    for pid in (old, legacy, current):
+        assert svc.retry(pid) is True
+    assert store.load(old)["results"] == {}
+    assert store.load(legacy)["results"] == {}
+    assert store.load(old)["analysis_version"] == config.ANALYSIS_VERSION
+    assert store.load(current)["results"] == {"step1": {"new": True}}
+
+
+def test_new_analysis_records_the_version_when_created():
+    svc = PaperService(analyzers={True: FakeAnalyzer(), False: FakeAnalyzer()}, starter=lambda _pid: None)
+    data = make_pdf(3)
+    pid, reused = svc.create(data=data, pages=pdf_utils.extract_pages(data), filename="x.pdf", level="undergrad", sha256="new")
+    assert reused is False
+    assert store.load(pid)["analysis_version"] == config.ANALYSIS_VERSION
