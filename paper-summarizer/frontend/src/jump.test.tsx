@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { EvidenceChip, EvidenceList, JumpContext, PageChip } from './jump'
+import { EvidenceChip, EvidenceList, PageChip } from './jump'
+import { JumpContext } from './jumpContext'
 
 const withJump = (ui: React.ReactNode, jump = vi.fn()) => ({
   jump,

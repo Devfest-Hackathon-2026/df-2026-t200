@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { JumpContext } from '../jump'
+import { JumpContext } from '../jumpContext'
 import { step2 } from '../test/fixtures'
 import { Step2Walkthrough } from './Step2Walkthrough'
 

@@ -13,7 +13,7 @@ import { Upload } from './components/Upload'
 import { useElementWidth } from './hooks/useElementWidth'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { usePaper } from './hooks/usePaper'
-import { JumpContext, type JumpFn } from './jump'
+import { JumpContext, type JumpFn } from './jumpContext'
 
 const VIEWS = [
   { value: 'explain', label: '解説' },
