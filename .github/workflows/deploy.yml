@@ -49,8 +49,12 @@ jobs:
         # 古いコミットの CI を再実行したときに、古い版を本番に出さない
         id: latest
         run: |
-          head=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}" refs/heads/main | cut -f1)
-          if [ "$head" = "$(git rev-parse HEAD)" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "main は $head に進んでいるのでデプロイしない"; fi
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$head" = "$(git rev-parse HEAD)" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::main は $head に進んでいるので、このコミットはデプロイしない"
+          fi
 
       # 依存パッケージのスクリプトにデプロイ用の認証情報を見せないよう、認証より前にビルドする
       - uses: actions/setup-node@v7
