@@ -14,7 +14,7 @@ from google.genai import types
 from pydantic import ValidationError
 
 from . import config
-from .concepts import clean_concepts, repair_step1
+from .concepts import clean_concepts, clean_equation_concepts, repair_equation_concepts, repair_step1
 from .errors import EmptyResponseError
 from .flow import clean_flow
 from .schemas import Answer, QuizRewrites, Step1, Step2, Step3
@@ -101,7 +101,13 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
             log.warning("repairing invalid concept fields in %s response", schema.__name__)
             return schema.model_validate(repaired).model_dump(mode="json", by_alias=True)
         # 図解は付け足しなので、flow の中身が不正でも Step 2 の解説は捨てない。flow を外して検証し直す
-        raw = json.loads(resp.text)
+        # 式の concepts も付加情報なので、不正ならそこだけ直してから検証し直す
+        raw = repair_equation_concepts(json.loads(resp.text))
+        if schema is Step2:
+            try:
+                return schema.model_validate(raw).model_dump(mode="json", by_alias=True)
+            except ValidationError:
+                pass
         if not (isinstance(raw, dict) and raw.get("flow") is not None):
             raise
         log.warning("dropping invalid flow from %s response", schema.__name__)
@@ -126,7 +132,11 @@ def step1(pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client |
 
 
 def step2(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
-    context = json.dumps({"title": s1.get("title"), "summary": s1.get("summary"), "sections": s1.get("sections")}, ensure_ascii=False)
+    ids = [c["id"] for c in s1.get("concepts") or [] if isinstance(c, dict) and isinstance(c.get("id"), str)]
+    concepts = [{"id": c["id"], "name": c.get("name")} for c in s1.get("concepts") or [] if isinstance(c, dict) and c.get("id") in ids]
+    context = json.dumps(
+        {"title": s1.get("title"), "summary": s1.get("summary"), "sections": s1.get("sections"), "concepts": concepts}, ensure_ascii=False
+    )
     prompt = f"""この論文の提案手法について「Step 2: コアロジック＆図表連動ウォークスルー」を作ってください。
 Step 1 の結果{DOC_RULE}:
 {_fence("step1_result", context)}
@@ -134,13 +144,15 @@ Step 1 の結果{DOC_RULE}:
 - 手法を 入力 → 処理 → 出力 の順に 3〜6 段階に分け、各段階を順を追って説明する。
 - 各段階に関係する図表（figures）と数式（equations）を、論文中の該当ページとともに対応付ける。
   図表・数式が無い段階では空配列でよい。同じ図表を複数段階に重複させない。
+- 各数式の concepts に、その式を理解するのに必要な前提知識の id を 0〜3 個入れる。id は上の Step 1 の結果の concepts にあるものだけを使い、無ければ空配列にする。
 - 数式の latex は KaTeX で描画できる記法で、symbols で各記号の意味と定義されているページを示す。
 - 実験結果の主要な図表（性能比較の表など）は最後の段階に含める。
 - flow に手法の流れ図のデータを入れる。ノードは 3〜8 個（kind は input / process / output）、edges は循環させない。
   frames は stages と同じ数で、stage_index が各段階に対応する（active_edges は "始点id->終点id"）。
   shape（テンソルの形など）は論文に書かれているときだけ書き、根拠を付ける。書かれていなければ null。
   数値のデータは入れない。ノード・コマの evidence は論文からそのまま抜き出す。"""
-    return clean_flow(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli, lang))
+    out = clean_flow(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli, lang))
+    return clean_equation_concepts(out, set(ids))
 
 
 def step3(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:

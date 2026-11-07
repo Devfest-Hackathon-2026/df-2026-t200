@@ -92,6 +92,8 @@ class Equation(BaseModel):
     latex: str = Field(description="式全体の LaTeX（$ なし、KaTeX で描画可能なもの）")
     plain_meaning: str = Field(description="この式を一言でいうと")
     symbols: list[SymbolInfo]
+    # 後から足した項目。出力が外れても Step 2 全体を落とさないよう既定値を持たせる
+    concepts: list[str] = Field(default_factory=list, description="この式を理解するのに必要な Step 1 の前提知識の id。Step 1 に無い id は書かない")
 
 
 class FigureInfo(BaseModel):

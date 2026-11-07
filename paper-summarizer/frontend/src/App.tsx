@@ -7,8 +7,8 @@ import type { PdfViewerHandle } from './components/PdfViewer'
 import { QaPanel } from './components/QaPanel'
 import { QuizPanel } from './components/QuizPanel'
 import { EMPTY_DRAFT, type QuizDraft } from './components/quizDraft'
-import { Step1Map } from './components/Step1Map'
-import { Step2Walkthrough } from './components/Step2Walkthrough'
+import { Step1Map, type ConceptFocus } from './components/Step1Map'
+import { Step2Walkthrough, type EquationFocus } from './components/Step2Walkthrough'
 import { Step3Critical } from './components/Step3Critical'
 import { TabList } from './components/TabList'
 import { Upload } from './components/Upload'
@@ -90,6 +90,24 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
     if (n !== step) viewer.current?.clearHighlight()
     setStep(n)
   }
+  // Step 1 の概念と Step 2 の式を行き来する。移動先に渡す指定は、タブを自分で選び直したときは引き継がない
+  const [conceptFocus, setConceptFocus] = useState<ConceptFocus | null>(null)
+  const [equationFocus, setEquationFocus] = useState<EquationFocus | null>(null)
+  const onSelectStep = (n: number) => {
+    setConceptFocus(null)
+    setEquationFocus(null)
+    selectStep(n)
+  }
+  const openConcept = (id: string) => {
+    setEquationFocus(null)
+    setConceptFocus({ id })
+    selectStep(1)
+  }
+  const openEquation = (stage: number, index: number) => {
+    setConceptFocus(null)
+    setEquationFocus({ stage, index })
+    selectStep(2)
+  }
 
   const retry = async () => {
     setRetrying(true)
@@ -152,7 +170,7 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
             idPrefix="step"
             panelId="step-panel"
             selected={step}
-            onSelect={selectStep}
+            onSelect={onSelectStep}
             items={STEPS.map((s) => ({
               value: s.n,
               className: s.n === 4 ? 'tab quiz-tab' : 'tab',
@@ -186,9 +204,24 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
           )}
           <div className="step-scroll" id="step-panel" role="tabpanel" aria-labelledby={`step-tab-${step}`} tabIndex={0}>
             <ErrorBoundary key={step} title="このStepを表示できませんでした">
-              {step === 1 && (r.step1 ? <Step1Map data={r.step1} paperId={id} /> : <Pending working={working} label="前提知識マップ" />)}
+              {step === 1 &&
+                (r.step1 ? (
+                  <Step1Map data={r.step1} paperId={id} step2={r.step2} onOpenEquation={openEquation} focus={conceptFocus} />
+                ) : (
+                  <Pending working={working} label="前提知識マップ" />
+                ))}
               {step === 2 &&
-                (r.step2 ? <Step2Walkthrough data={r.step2} paperId={id} /> : <Pending working={working} label="手法の流れの解説" />)}
+                (r.step2 ? (
+                  <Step2Walkthrough
+                    data={r.step2}
+                    paperId={id}
+                    concepts={r.step1?.concepts}
+                    onOpenConcept={openConcept}
+                    focus={equationFocus}
+                  />
+                ) : (
+                  <Pending working={working} label="手法の流れの解説" />
+                ))}
               {step === 3 &&
                 (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
               {step === 4 &&

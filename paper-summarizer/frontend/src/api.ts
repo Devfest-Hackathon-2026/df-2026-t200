@@ -31,6 +31,8 @@ export type Equation = {
   latex: string
   plain_meaning: string
   symbols: { symbol_latex: string; meaning: string; defined_page: number | null }[]
+  /** この式に必要な Step 1 の前提知識の id。古い結果には無い */
+  concepts?: string[]
 }
 export type Figure = {
   label: string

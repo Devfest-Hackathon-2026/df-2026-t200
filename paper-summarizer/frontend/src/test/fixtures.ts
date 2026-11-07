@@ -138,6 +138,8 @@ export const step2: Step2 = {
           latex: 'a = \\frac{b}{c}',
           plain_meaning: '比',
           symbols: [{ symbol_latex: 'b', meaning: '分子', defined_page: 3 }],
+          // expectation は発展の概念（「必須だけ」では隠れる）。ghost は Step 1 に無い id
+          concepts: ['attention', 'expectation', 'ghost'],
         },
       ],
     },
