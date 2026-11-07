@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Stage, Step2 } from '../api'
+import { api, type Stage, type Step2 } from '../api'
 import { EvidenceList, PageChip } from '../jump'
 import { useJump, type JumpFn, type JumpOptions } from '../jumpContext'
 import { Tex } from './Tex'
@@ -14,7 +14,7 @@ function jumpToStage(jump: JumpFn, stage: Stage | undefined, options?: JumpOptio
   else jump(page)
 }
 
-export function Step2Walkthrough({ data }: { data: Step2 }) {
+export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: string }) {
   const [i, setI] = useState(0)
   const jump = useJump()
   const stage = data.stages[i]
@@ -102,7 +102,7 @@ export function Step2Walkthrough({ data }: { data: Step2 }) {
               <h3>式 {eq.label}</h3>
               <PageChip page={eq.page} />
             </div>
-            <Tex tex={eq.latex} block />
+            <Tex tex={eq.latex} block page={eq.page} pdfUrl={paperId ? api.pdfUrl(paperId) : undefined} />
             <p className="why">
               <span className="label">式の意味</span>
               <span>{eq.plain_meaning}</span>

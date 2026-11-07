@@ -1,8 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import katex from 'katex'
 import { describe, expect, it, vi } from 'vitest'
+import { JumpContext } from '../jumpContext'
 import { Tex } from './Tex'
 import { KATEX_OPTIONS } from './texOptions'
+
+// pdf.js は jsdom で動かないので、ページ画像は目印だけの部品に差し替える
+vi.mock('./PdfPageImage', () => ({
+  default: ({ url, page }: { url: string; page: number }) => <div data-testid="page-image">{`${url}#${page}`}</div>,
+}))
 
 describe('Tex', () => {
   it('shows the source while KaTeX loads, then renders it', async () => {
@@ -43,5 +50,43 @@ describe('Tex', () => {
     const code = screen.getByText('\\frac{a')
     expect(code.tagName).toBe('CODE')
     expect(code).toHaveClass('tex-fallback')
+  })
+})
+
+describe('Tex fallback with a page', () => {
+  const broken = '\\frac{a'
+
+  it('shows 「PDFで確認」 and keeps the source when rendering fails', async () => {
+    render(<Tex tex={broken} block page={4} />)
+    expect(await screen.findByRole('button', { name: 'PDFで確認' })).toBeInTheDocument()
+    expect(screen.getByText(broken)).toHaveAttribute('title', '数式の元の文字列')
+  })
+
+  it('jumps the PDF viewer to the page of the equation', async () => {
+    const jump = vi.fn()
+    render(
+      <JumpContext.Provider value={jump}>
+        <Tex tex={broken} page={4} />
+      </JumpContext.Provider>,
+    )
+    await userEvent.click(await screen.findByRole('button', { name: 'PDFで確認' }))
+    expect(jump).toHaveBeenCalledWith(4)
+  })
+
+  it('shows the page image when a PDF url is given', async () => {
+    render(<Tex tex={broken} page={4} pdfUrl="/pdf" />)
+    expect(await screen.findByTestId('page-image')).toHaveTextContent('/pdf#4')
+  })
+
+  it('renders valid LaTeX with KaTeX and no button even when a page is given', async () => {
+    const { container } = render(<Tex tex={'x^2'} page={4} />)
+    await waitFor(() => expect(container.querySelector('.katex')).not.toBeNull())
+    expect(screen.queryByRole('button', { name: 'PDFで確認' })).toBeNull()
+  })
+
+  it('keeps the plain code fallback when there is no page', async () => {
+    render(<Tex tex={broken} />)
+    await waitFor(() => expect(screen.getByText(broken)).toHaveClass('tex-fallback'))
+    expect(screen.queryByRole('button', { name: 'PDFで確認' })).toBeNull()
   })
 })
