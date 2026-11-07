@@ -12,6 +12,15 @@ describe('Step1Map', () => {
     expect(screen.getByText('全体像をつかむ')).toBeInTheDocument()
   })
 
+  it('keeps the full name of a long concept in the title and shrinks the label to fit the oval', () => {
+    const name = '特徴量ベース手法とファインチューニング手法'
+    const data = { ...step1, concepts: [{ ...step1.concepts[0], name }] }
+    render(<Step1Map data={data} paperId="p1" />)
+    const btn = screen.getByTitle(name)
+    expect(btn).toHaveClass('xlong')
+    expect(btn).toHaveTextContent(name)
+  })
+
   it('reveals description only for unknown concepts and persists the choice', async () => {
     render(<Step1Map data={step1} paperId="p1" />)
     expect(screen.queryByText('ベクトルの積')).not.toBeInTheDocument()

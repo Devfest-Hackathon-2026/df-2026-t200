@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Concept } from '../api'
 import { step1 } from '../test/fixtures'
-import { COL_GAP, NARROW_NODE_W, NODE_H, NODE_W, PAD, ROW_GAP, edgePaths, layoutConcepts, ovalPath } from './conceptLayout'
+import { COL_GAP, NARROW_NODE_W, NODE_H, NODE_W, PAD, ROW_GAP, edgePaths, layoutConcepts, nodeLabelSize, ovalPath } from './conceptLayout'
 
 const concept = (id: string, depends_on: string[] = []): Concept => ({
   id,
@@ -113,5 +113,13 @@ describe('ovalPath', () => {
     const d = ovalPath(50, 20, 40, 15)
     expect(d.endsWith('Z')).toBe(true)
     expect(d).not.toContain('L')
+  })
+})
+
+describe('nodeLabelSize', () => {
+  it('shrinks the label as the name gets longer', () => {
+    expect(nodeLabelSize('内積')).toBe('')
+    expect(nodeLabelSize('Self-Attention')).toBe('long')
+    expect(nodeLabelSize('特徴量ベース手法とファインチューニング手法')).toBe('xlong')
   })
 })

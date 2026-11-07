@@ -3,7 +3,7 @@ import type { Step1 } from '../api'
 import { useElementWidth } from '../hooks/useElementWidth'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { PageChip } from '../jump'
-import { edgePaths, layoutConcepts, ovalPath } from './conceptLayout'
+import { edgePaths, layoutConcepts, nodeLabelSize, ovalPath } from './conceptLayout'
 
 /** App.tsx の NARROW_QUERY と同じ幅。狭い画面では概念を上から下へ並べ、横にはみ出さないようにする */
 const NARROW_QUERY = '(max-width: 900px)'
@@ -110,11 +110,14 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
                   <li key={c.id} style={{ left: p.x, top: p.y, width: nodeW, height: nodeH }}>
                     <button
                       type="button"
-                      className={`graph-node ${k ?? ''} ${selected === c.id ? 'selected' : ''}`}
+                      className={`graph-node ${k ?? ''} ${selected === c.id ? 'selected' : ''} ${nodeLabelSize(c.name)}`
+                        .replace(/ +/g, ' ')
+                        .trim()}
+                      title={c.name}
                       aria-pressed={selected === c.id}
                       onClick={() => setSelected(c.id)}
                     >
-                      <span>{c.name}</span>
+                      <span className="graph-node-name">{c.name}</span>
                       {k && <small className={`node-tag ${k}`}>{k === 'known' ? '知っている' : '知らない'}</small>}
                     </button>
                   </li>
