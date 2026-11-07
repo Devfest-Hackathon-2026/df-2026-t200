@@ -16,7 +16,9 @@ import { usePaper } from './hooks/usePaper'
 import { JumpContext, type JumpFn } from './jumpContext'
 
 // pdf.js は大きいので、論文を開くまで読み込まない（アップロード画面を軽くする）
-const PdfViewer = lazy(() => import('./components/PdfViewer').then((m) => ({ default: m.PdfViewer })))
+const PdfViewer = lazy(() => loadPdfViewer().then((m) => ({ default: m.PdfViewer })))
+
+const loadPdfViewer = () => import('./components/PdfViewer')
 
 const VIEWS = [
   { value: 'explain', label: '解説' },
@@ -37,25 +39,46 @@ const paperIdFromHash = () => window.location.hash.match(/^#\/paper\/([0-9a-f]{1
 
 function PaperView({ id, health }: { id: string; health: Health | null }) {
   const { paper, error, notFound, refresh } = usePaper(id)
+  // 論文のデータを待っている間に PDF の部品も読み込み始める
+  useEffect(() => {
+    void loadPdfViewer()
+  }, [])
   const [retryError, setRetryError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
   const [step, setStep] = useState(1)
   const [view, setView] = useState<'pdf' | 'explain'>('explain')
-  const viewer = useRef<PdfViewerHandle>(null)
+  const viewer = useRef<PdfViewerHandle | null>(null)
+  // PdfViewer は遅延読み込みなので、マウント前に頼まれた移動は最新の 1 件だけ覚え、マウント時に渡す
+  const pendingJump = useRef<[number, string | undefined] | null>(null)
+  const attachViewer = useCallback((handle: PdfViewerHandle | null) => {
+    viewer.current = handle
+    if (handle && pendingJump.current) {
+      const [page, quote] = pendingJump.current
+      pendingJump.current = null
+      handle.jumpTo(page, quote)
+    }
+  }, [])
+  const requestJump = useCallback((page: number, quote?: string) => {
+    if (viewer.current) viewer.current.jumpTo(page, quote)
+    else pendingJump.current = [page, quote]
+  }, [])
   const { ref: setWorkspace, element: workspaceBox, width: workspaceWidth } = useElementWidth<HTMLDivElement>()
   // 広い画面で PDF が占める幅（%）。どの論文でも同じ幅で開けるよう、論文ごとではなく 1 つだけ覚える
   const [split, setSplit] = useLocalStorageState('pane-split', SPLIT_DEFAULT, isSplit)
   // 画面の幅によっては PDF や解説の最小幅を守るために動かせる範囲が狭まる。保存した値はそのままにし、表示だけ範囲に収める
   const bounds = splitBounds(workspaceWidth ?? 0)
   const shownSplit = clampSplit(split, bounds)
-  const jump = useCallback<JumpFn>((page, quote, options) => {
-    // 広い画面、または画面を切り替えたくない移動（Step 2 を開いたときの強調など）はそのまま頼む。
-    // PDF が隠れている間の移動は PdfViewer が保留し、表示されたときに行う
-    if (!isNarrow() || options?.switchView === false) return viewer.current?.jumpTo(page, quote)
-    // 狭い画面では先に PDF を表示し、ページの大きさが決まってから移動する
-    setView('pdf')
-    requestAnimationFrame(() => viewer.current?.jumpTo(page, quote))
-  }, [])
+  const jump = useCallback<JumpFn>(
+    (page, quote, options) => {
+      // 広い画面、または画面を切り替えたくない移動（Step 2 を開いたときの強調など）はそのまま頼む。
+      // PDF が隠れている間の移動は PdfViewer が保留し、表示されたときに行う
+      if (!isNarrow() || options?.switchView === false) return requestJump(page, quote)
+      // 狭い画面では先に PDF を表示し、ページの大きさが決まってから移動する
+      setView('pdf')
+      requestAnimationFrame(() => requestJump(page, quote))
+    },
+    [requestJump],
+  )
   // Step を切り替えたら、前の Step で付けた PDF の強調を消す
   const selectStep = (n: number) => {
     if (n !== step) viewer.current?.clearHighlight()
@@ -106,7 +129,7 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
       <div ref={setWorkspace} className={`workspace show-${view}`} style={{ '--split': `${shownSplit}%` } as CSSProperties}>
         <div className="pane-left" id="view-panel-pdf" role="tabpanel" aria-labelledby="view-tab-pdf">
           <Suspense fallback={<div className="center muted">PDFを読み込んでいます…</div>}>
-            <PdfViewer ref={viewer} url={api.pdfUrl(id)} />
+            <PdfViewer ref={attachViewer} url={api.pdfUrl(id)} />
           </Suspense>
         </div>
         <PaneDivider value={shownSplit} bounds={bounds} onChange={setSplit} container={workspaceBox} />
