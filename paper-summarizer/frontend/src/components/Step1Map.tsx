@@ -59,13 +59,16 @@ type Step1MapProps = {
 
 export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1MapProps) {
   const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
-  const [level, setLevel] = useLocalStorageState<ConceptLevel>(`conceptLevel:${paperId}`, 'all', isConceptLevel)
+  const [savedLevel, setLevel] = useLocalStorageState<ConceptLevel>(`conceptLevel:${paperId}`, 'all', isConceptLevel)
+  // 式から隠れた概念へ移ったときの一時的な「すべて」。保存せず、学生が自分で切り替えたら外す
+  const [override, setOverride] = useState<ConceptLevel | null>(null)
+  const level = override ?? savedLevel
   const [selected, setSelected] = useState<string | null>(data.concepts[0]?.id ?? null)
   // 式から移ってきたときは、その概念を選ぶ。表示範囲で隠れている概念なら「すべて」に切り替えて選べるようにする
   useEffect(() => {
     if (!focus || !data.concepts.some((c) => c.id === focus.id)) return
     setSelected(focus.id)
-    setLevel((cur) => (filterConcepts(data.concepts, cur).some((c) => c.id === focus.id) ? cur : 'all'))
+    setOverride(filterConcepts(data.concepts, level).some((c) => c.id === focus.id) ? null : 'all')
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 移動の指示（focus）が変わったときだけ動かす
   }, [focus])
   // 表示範囲に入る概念だけを図にする。隠した概念への依存は、レイアウトと矢印が無視する
@@ -114,7 +117,10 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
                 type="button"
                 className={`toggle ${level === l ? 'on' : ''}`}
                 aria-pressed={level === l}
-                onClick={() => setLevel(l)}
+                onClick={() => {
+                  setOverride(null)
+                  setLevel(l)
+                }}
               >
                 {label}
               </button>

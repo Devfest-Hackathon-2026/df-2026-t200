@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { step1, step1Old, step2 } from '../test/fixtures'
@@ -38,6 +38,19 @@ describe('Step1Map equations that use a concept', () => {
     render(<Step1Map data={step1} paperId="pe5" focus={{ id: 'expectation' }} />)
     expect(within(detail()).getByRole('heading', { name: '期待値' })).toBeInTheDocument()
     expect(level('すべて')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('does not save the temporary "all", but saves a level the student picks', async () => {
+    localStorage.setItem('conceptLevel:pe8', JSON.stringify('essential'))
+    const { unmount } = render(<Step1Map data={step1} paperId="pe8" focus={{ id: 'expectation' }} />)
+    unmount()
+    expect(JSON.parse(localStorage.getItem('conceptLevel:pe8')!)).toBe('essential')
+    render(<Step1Map data={step1} paperId="pe8" focus={{ id: 'expectation' }} />)
+    expect(level('すべて')).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(level('推奨まで'))
+    expect(level('推奨まで')).toHaveAttribute('aria-pressed', 'true')
+    cleanup()
+    expect(JSON.parse(localStorage.getItem('conceptLevel:pe8')!)).toBe('recommended')
   })
 
   it('keeps the chosen level when the focused concept is already visible', () => {

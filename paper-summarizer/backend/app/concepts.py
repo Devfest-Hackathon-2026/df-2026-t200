@@ -41,6 +41,7 @@ def repair_step1(raw: Any) -> dict[str, Any] | None:
     return {**raw, "concepts": [_repair_concept(c) for c in raw["concepts"]]}
 
 
+MAX_EQUATION_CONCEPTS = 3  # 式1つにつけられる前提知識の数
 MAX_INFERENCE_DEPTH = 2  # 論文の概念から depends_on をたどって、論文に出てこない前提を何段まで残すか
 
 
@@ -104,5 +105,5 @@ def clean_equation_concepts(step2: dict[str, Any], valid_ids: set[str]) -> dict[
     """式の concepts から、Step 1 に無い id と重複を捨てる。元のデータは変えず、新しい dict を返す。"""
     out = copy.deepcopy(step2)
     for e in _each_equation(out):
-        e["concepts"] = list(dict.fromkeys(c for c in e.get("concepts") or [] if c in valid_ids))
+        e["concepts"] = list(dict.fromkeys(c for c in e.get("concepts") or [] if c in valid_ids))[:MAX_EQUATION_CONCEPTS]
     return out

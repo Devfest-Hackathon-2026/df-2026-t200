@@ -106,3 +106,10 @@ def test_step2_without_step1_concepts_still_works(fake):
     fake(mock.step2(PAGES))
     out = gemini.step2(b"%PDF", "undergrad", {"title": "t"})
     assert _equations(out)[0]["concepts"] == []
+
+
+def test_concepts_per_equation_are_capped_at_three():
+    s2 = mock.step2(PAGES)
+    s2["stages"][1]["equations"][0]["concepts"] = ["a", "b", "c", "d", "e"]
+    out = concepts_mod.clean_equation_concepts(s2, {"a", "b", "c", "d", "e"})
+    assert _equations(out)[0]["concepts"] == ["a", "b", "c"]

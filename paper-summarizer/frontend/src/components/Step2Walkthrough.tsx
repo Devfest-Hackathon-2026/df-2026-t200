@@ -35,6 +35,13 @@ export function Step2Walkthrough({ data, paperId, concepts, onOpenConcept, focus
   // 指された式が実在するときだけ、その段階から始める
   const focusEq = focus ? data.stages[focus.stage]?.equations?.[focus.index] : undefined
   const [i, setI] = useState(focusEq && focus ? focus.stage : 0)
+  // 指された式のカードが現れたら、画面の中央へスクロールする（jsdom には scrollIntoView が無い）
+  const scrolled = useRef(false)
+  const scrollToFocused = (el: HTMLDivElement | null) => {
+    if (!el || scrolled.current) return
+    scrolled.current = true
+    el.scrollIntoView?.({ block: 'center' })
+  }
   const jump = useJump()
   const stage = data.stages[i]
 
@@ -45,7 +52,7 @@ export function Step2Walkthrough({ data, paperId, concepts, onOpenConcept, focus
     if (openedRef.current) return
     openedRef.current = true
     // Step 1 の概念から来たときは、最初の段階ではなく指された式のページへ移る
-    if (focusEq) return jump(focusEq.page)
+    if (focusEq) return jump(focusEq.page, undefined, { switchView: false })
     jumpToStage(jump, data.stages[0], { switchView: false }, frameEvidenceAt(data, 0))
     // focusEq は開いたときの 1 回だけ使う
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,7 +132,12 @@ export function Step2Walkthrough({ data, paperId, concepts, onOpenConcept, focus
         ))}
 
         {stage.equations.map((eq, k) => (
-          <div key={k} className="sub-block">
+          <div
+            key={k}
+            id={`equation-${i}-${k}`}
+            className="sub-block"
+            ref={focus && focus.stage === i && focus.index === k ? scrollToFocused : undefined}
+          >
             <div className="row between">
               <h3>式 {eq.label}</h3>
               <PageChip page={eq.page} />

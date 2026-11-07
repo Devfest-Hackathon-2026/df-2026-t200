@@ -136,6 +136,20 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 3, name: '内積' })).toBeInTheDocument()
   })
 
+  it('keeps the explanation in view on narrow screens when opening an equation from a Step 1 concept', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList)
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    const { container } = render(<App />)
+    await screen.findByText('問題A')
+    await userEvent.click(screen.getByRole('button', { name: /Attention/ }))
+    viewer.jumpTo.mockClear()
+    await userEvent.click(screen.getByRole('button', { name: '式 (1)（p.3）' }))
+    expect(viewer.jumpTo).toHaveBeenCalledWith(3, undefined)
+    expect(container.querySelector('.workspace')).toHaveClass('show-explain')
+  })
+
   it('keeps the explanation in view on narrow screens when Step 2 highlights its first stage', async () => {
     window.location.hash = `#/paper/${paper.id}`
     vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList)

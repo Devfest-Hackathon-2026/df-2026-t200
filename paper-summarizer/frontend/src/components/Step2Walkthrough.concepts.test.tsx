@@ -41,7 +41,7 @@ describe('Step2Walkthrough equation concepts', () => {
       </JumpContext.Provider>,
     )
     expect(jump).toHaveBeenCalledTimes(1)
-    expect(jump).toHaveBeenCalledWith(3)
+    expect(jump).toHaveBeenCalledWith(3, undefined, { switchView: false })
   })
 
   it('ignores a focus that points at a missing stage or equation', () => {
@@ -53,5 +53,31 @@ describe('Step2Walkthrough equation concepts', () => {
     )
     expect(screen.getByText('1 / 2')).toBeInTheDocument()
     expect(jump).toHaveBeenCalledWith(2, 'we embed tokens', { switchView: false })
+  })
+
+  it('scrolls the focused equation card to the center', () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    try {
+      render(<Step2Walkthrough data={step2} focus={{ stage: 0, index: 0 }} />)
+      expect(scroll).toHaveBeenCalledTimes(1)
+      expect(scroll).toHaveBeenCalledWith({ block: 'center' })
+      expect(document.getElementById('equation-0-0')).toBeInTheDocument()
+    } finally {
+      // @ts-expect-error jsdom には無いので元に戻す
+      delete Element.prototype.scrollIntoView
+    }
+  })
+
+  it('does not scroll without a focus', () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    try {
+      render(<Step2Walkthrough data={step2} />)
+      expect(scroll).not.toHaveBeenCalled()
+    } finally {
+      // @ts-expect-error jsdom には無いので元に戻す
+      delete Element.prototype.scrollIntoView
+    }
   })
 })
