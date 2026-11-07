@@ -211,3 +211,18 @@ def ask(pages: list[str], question: str) -> dict[str, Any]:
         "evidence": _ev(s, 1),
         "confidence": "low",
     }
+
+
+def quiz_rewrite(targets: list[dict[str, Any]], lang: str = "ja") -> dict[str, Any]:
+    """デモモードの誤り探し。文の頭にある「【デモ】」を「【デモ・誤り】」に変えるだけの、いつも同じ書き換え。"""
+    time.sleep(0.5)
+    return {
+        "rewrites": [
+            {
+                "id": t["id"],
+                "altered": t["text"].replace("【デモ】", "【デモ・誤り】", 1) if "【デモ】" in t["text"] else f"【デモ・誤り】{t['text']}",
+                "changed": "【デモ】文の一部を別の内容に変えたという想定のサンプルです。",
+            }
+            for t in targets
+        ],
+    }

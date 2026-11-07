@@ -13,7 +13,7 @@ from google.genai import types
 
 from . import config
 from .errors import EmptyResponseError
-from .schemas import Answer, Step1, Step2, Step3
+from .schemas import Answer, QuizRewrites, Step1, Step2, Step3
 
 
 def client() -> genai.Client:
@@ -155,3 +155,22 @@ def ask(
 - 論文外の一般知識で補った場合は source=general_knowledge とし、その旨が分かるように答える。
 - 論文に記載がなく答えられない場合は source=not_in_paper とし、推測で埋めない。"""
     return _generate(config.QA_MODEL, [_pdf_part(pdf_bytes), prompt], Answer, level, cli, lang)
+
+
+def quiz_rewrite(targets: list[dict[str, Any]], level: str, *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
+    """誤り探し用に、文の事実を1か所だけ変えた文を作らせる。論文由来の文と引用はそれぞれ別のタグで囲んで渡す。"""
+    blocks = []
+    for t in targets:
+        blocks.append(
+            f"id: {t['id']}\n元の文{DOC_RULE}:\n{_fence('sentence', t['text'])}\nこの文の根拠（論文の原文）:\n{_fence('evidence', t['quote'])}"
+        )
+    prompt = f"""学生が「AIの解説の誤りを論文の原文と照らして見つける」練習をするために、次の文それぞれを、事実を1か所だけ変えた誤りの文に書き換えてください。
+
+{chr(10).join(blocks)}
+
+- 各文について id をそのまま使い、altered に書き換えた文、changed に何をどう変えたかを1文で書く。
+- 変えるのは事実1か所だけ。数値、比較の向き（大きい/小さい、改善/悪化）、どの部品・手順が何をするか、のどれかにする。
+- 変えた結果は、根拠の原文と矛盾し、原文のページを開けば誤りだと確かめられるものにする。根拠に書かれていない事柄を新しく付け足さない。
+- 元の文と同じ言語・文体・同じくらいの長さにする。誤りだと分かる注意書きや「（誤）」のような印は付けない。
+- 元の文と同じ文を返さない。全部の id について1つずつ返す。"""
+    return _generate(config.QA_MODEL, [prompt], QuizRewrites, level, cli, lang)

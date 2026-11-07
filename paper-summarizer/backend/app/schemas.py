@@ -153,6 +153,32 @@ class AskRequest(BaseModel):
     current_step: int | None = None
 
 
+# ---------- 誤り探しモード ----------
+
+
+class QuizRewrite(BaseModel):
+    id: str = Field(description="渡された文の id（そのまま返す）")
+    altered: str = Field(description="元の文の事実を1か所だけ変えた文。元の文と同じ言語・同じ長さ程度で、文として自然にする")
+    changed: str = Field(description="何をどう変えたか（例: 数値を 8 から 12 に変えた）を1文で")
+
+
+class QuizRewrites(BaseModel):
+    rewrites: list[QuizRewrite]
+
+
+class QuizCreateRequest(BaseModel):
+    force: bool = False  # True なら、問題があっても新しく作る（上限に数える）
+
+
+class QuizPick(BaseModel):
+    id: str = Field(min_length=1, max_length=20)
+    page: int | None = Field(default=None, ge=1, le=100000)
+
+
+class QuizAnswerRequest(BaseModel):
+    picks: list[QuizPick] = Field(max_length=20)
+
+
 # ---------- 保存する論文の記録 ----------
 
 
