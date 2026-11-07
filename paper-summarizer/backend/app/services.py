@@ -246,6 +246,7 @@ class PaperService:
                 "status": "done" if source else "queued",
                 "error": None,
                 "demo": source["demo"] if source else config.DEMO_MODE,
+                "analysis_version": source.get("analysis_version") if source else None,
                 "results": dict(source["results"]) if source else {},
                 "messages": [],
                 "owner": owner,
@@ -303,7 +304,7 @@ class PaperService:
                 results[key] = verify_all(_generate_step(analyzer, key, src, results), src.norm_pages)
                 store.set_result(paper_id, key, results[key])
                 log.info("paper=%s %s done", paper_id, key)
-            store.update(paper_id, status="done", error=None)
+            store.update(paper_id, status="done", error=None, analysis_version=config.ANALYSIS_VERSION)
         except Exception as e:  # noqa: BLE001
             # 画面には決まった文言だけを返し、詳細は paper_id 付きでログに残す
             log.exception("analysis failed paper=%s", paper_id)

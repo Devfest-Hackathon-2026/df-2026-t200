@@ -8,7 +8,15 @@ OWNER = "o" * 32
 
 
 def _paper(pid, **kw):
-    base = {"id": pid, "filename": "a.pdf", "status": "queued", "created_at": store.now(), "results": {}, "owner": OWNER}
+    base = {
+        "id": pid,
+        "filename": "a.pdf",
+        "status": "queued",
+        "created_at": store.now(),
+        "results": {},
+        "owner": OWNER,
+        "analysis_version": config.ANALYSIS_VERSION,
+    }
     return {**base, **kw}
 
 
@@ -186,3 +194,23 @@ def test_find_by_hash_matches_lang_and_treats_missing_lang_as_ja():
     assert store.find_by_hash("h2", "grad", "ja") == old
     assert store.find_by_hash("h2", "grad", "en") == en
     assert store.find_by_hash("h2", "grad") == old
+
+
+def test_find_by_hash_skips_results_from_an_older_analysis_version():
+    old = store.new_id()
+    store.save({**_paper(old, sha256="h3", level="undergrad", status="done"), "analysis_version": config.ANALYSIS_VERSION - 1})
+    legacy = store.new_id()
+    legacy_record = _paper(legacy, sha256="h3", level="undergrad", status="done")
+    del legacy_record["analysis_version"]  # 版の無い古い記録
+    store.save(legacy_record)
+    assert store.find_by_hash("h3", "undergrad") is None
+
+
+def test_find_by_hash_prefers_the_newest_record():
+    first = store.new_id()
+    store.save(_paper(first, sha256="h4", level="undergrad", status="done", created_at="2026-11-01T00:00:00+00:00"))
+    newest = store.new_id()
+    store.save(_paper(newest, sha256="h4", level="undergrad", status="done", created_at="2026-11-08T00:00:00+00:00"))
+    middle = store.new_id()
+    store.save(_paper(middle, sha256="h4", level="undergrad", status="done", created_at="2026-11-05T00:00:00+00:00"))
+    assert store.find_by_hash("h4", "undergrad") == newest

@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .config import PAPER_DIR, UPLOAD_DIR
+from .config import ANALYSIS_VERSION, PAPER_DIR, UPLOAD_DIR
 
 log = logging.getLogger("paper")
 
@@ -187,7 +187,14 @@ def list_papers(owner: str | None) -> list[dict[str, Any]]:
 
 
 def find_by_hash(sha256: str, level: str, lang: str = "ja") -> str | None:
-    for p in _iter_papers():
-        if p.get("sha256") == sha256 and p.get("level") == level and p.get("lang", "ja") == lang and p.get("status") == "done":
-            return p["id"]
-    return None
+    """同じ PDF・説明のレベル・言語で、今の版（ANALYSIS_VERSION）の解析を終えた記録のうち、最も新しいものの id。"""
+    found = [
+        p
+        for p in _iter_papers()
+        if p.get("sha256") == sha256
+        and p.get("level") == level
+        and p.get("lang", "ja") == lang
+        and p.get("status") == "done"
+        and p.get("analysis_version") == ANALYSIS_VERSION
+    ]
+    return max(found, key=lambda p: str(p.get("created_at", "")))["id"] if found else None
