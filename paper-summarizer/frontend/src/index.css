@@ -2010,3 +2010,11 @@ body.pane-resizing .workspace > :not(.pane-divider) {
     transform: none;
   }
 }
+.learning-path {
+  list-style: decimal;
+  margin: 6px 0 10px;
+  padding-left: 28px;
+}
+.learning-path li {
+  margin: 4px 0;
+}
