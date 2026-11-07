@@ -34,7 +34,7 @@ describe('api', () => {
   it('sends the same browser id when listing and uploading, so the list shows only papers from this browser', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse([])))
     await api.list()
-    await api.upload(new File(['%PDF'], 'a.pdf'), 'grad')
+    await api.upload(new File(['%PDF'], 'a.pdf'))
     const ids = spy.mock.calls.map(([, init]) => new Headers((init as RequestInit).headers).get('X-Client-Id'))
     expect(ids[0]).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     expect(ids[1]).toBe(ids[0])
@@ -60,21 +60,21 @@ describe('api', () => {
     expect(new Headers((spy.mock.calls[0][1] as RequestInit).headers).get('X-Client-Id')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
   })
 
-  it('upload sends multipart form with file, level and lang', async () => {
+  it('upload sends multipart form with file and lang, leaving the level to the server', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ id: 'a', reused: false }))
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
-    await api.upload(file, 'grad')
+    await api.upload(file)
     const [url, init] = spy.mock.calls[0]
     expect(url).toBe('/api/papers')
     const body = (init as RequestInit).body as FormData
-    expect(body.get('level')).toBe('grad')
+    expect(body.has('level')).toBe(false)
     expect(body.get('lang')).toBe('ja')
     expect((body.get('file') as File).name).toBe('a.pdf')
   })
 
   it('upload sends the chosen output language', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ id: 'a', reused: false }))
-    await api.upload(new File(['%PDF'], 'a.pdf', { type: 'application/pdf' }), 'undergrad', 'en')
+    await api.upload(new File(['%PDF'], 'a.pdf', { type: 'application/pdf' }), 'en')
     expect(((spy.mock.calls[0][1] as RequestInit).body as FormData).get('lang')).toBe('en')
   })
 

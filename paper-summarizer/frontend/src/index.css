@@ -1819,3 +1819,15 @@ body.pane-resizing .workspace > :not(.pane-divider) {
     grid-template-columns: 1fr;
   }
 }
+.tex-fallback-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.tex-page-image {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #d0d4d9;
+  border-radius: 6px;
+}

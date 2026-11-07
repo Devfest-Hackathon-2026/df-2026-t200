@@ -1,23 +1,14 @@
-import katex from 'katex'
-import 'katex/dist/katex.min.css'
-import { useMemo } from 'react'
-import { KATEX_OPTIONS } from './texOptions'
+import { lazy, Suspense } from 'react'
+import type { TexProps } from './TexRender'
 
-/** LaTeX を KaTeX で描画する。描画できない式は元の文字列をそのまま出し、該当ページの確認を促す。 */
-export function Tex({ tex, block = false }: { tex: string; block?: boolean }) {
-  const html = useMemo(() => {
-    try {
-      return katex.renderToString(tex, { ...KATEX_OPTIONS, displayMode: block })
-    } catch {
-      return null
-    }
-  }, [tex, block])
-  if (html == null) {
-    return (
-      <code className="tex-fallback" title="数式を描画できませんでした。PDFの該当ページで確認してください">
-        {tex}
-      </code>
-    )
-  }
-  return <span className={block ? 'tex-block' : 'tex-inline'} dangerouslySetInnerHTML={{ __html: html }} />
+// KaTeX とそのCSS・フォントは大きいので、数式を表示するときまで読み込まない
+const TexRender = lazy(() => import('./TexRender'))
+
+/** LaTeX を KaTeX で描画する。読み込み中は元の文字列を出し、描画できない式の扱いは TexRender に任せる。 */
+export function Tex({ tex, block = false, page, pdfUrl }: TexProps) {
+  return (
+    <Suspense fallback={<code className="tex-loading">{tex}</code>}>
+      <TexRender tex={tex} block={block} page={page} pdfUrl={pdfUrl} />
+    </Suspense>
+  )
 }
