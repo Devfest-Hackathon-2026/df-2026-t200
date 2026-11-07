@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app import gemini, mock
+from app.concepts import clean_concepts
 from app.pdf_utils import normalize, verify_all
 
 PAGES = ["This is the first page of a sample paper about attention and reading support. " * 3, "Second page text with results. " * 5]
@@ -130,3 +131,70 @@ def test_paper_concept_evidence_is_verified_by_the_existing_verifier():
 def test_a_quote_not_in_the_pdf_is_flagged_unverified():
     bad = verify_all({"evidence": [{"page": 1, "quote": "this sentence is nowhere in the paper at all"}]}, [normalize(p) for p in PAGES])
     assert bad["evidence"][0]["verified"] is False
+
+
+# ---------- 論文外の前提は2段まで ----------
+
+
+def _c(cid, origin, deps=()):
+    return {"id": cid, "origin": origin, "depends_on": list(deps), "evidence": []}
+
+
+def _ids(step1):
+    return [c["id"] for c in step1["concepts"]]
+
+
+def test_ai_inference_beyond_two_steps_from_a_paper_concept_is_dropped():
+    s1 = {
+        "concepts": [
+            _c("p", "paper", ["a1"]),
+            _c("a1", "ai_inference", ["a2"]),
+            _c("a2", "ai_inference", ["a3"]),
+            _c("a3", "ai_inference", ["a4"]),
+            _c("a4", "ai_inference"),
+        ]
+    }
+    out = clean_concepts(s1)
+    assert _ids(out) == ["p", "a1", "a2"]
+    assert next(c for c in out["concepts"] if c["id"] == "a2")["depends_on"] == []  # 外した概念への依存も消す
+    assert _ids(s1) == ["p", "a1", "a2", "a3", "a4"]  # 元は変えない
+
+
+def test_a_shorter_path_through_another_paper_concept_keeps_the_concept():
+    s1 = {
+        "concepts": [
+            _c("p1", "paper", ["a1"]),
+            _c("a1", "ai_inference", ["a2"]),
+            _c("a2", "ai_inference", ["a3"]),
+            _c("a3", "ai_inference"),
+            _c("p2", "paper", ["a3"]),
+        ]
+    }
+    assert _ids(clean_concepts(s1)) == ["p1", "a1", "a2", "a3", "p2"]
+
+
+def test_paper_concepts_are_never_dropped_and_cycles_terminate():
+    s1 = {
+        "concepts": [
+            _c("p", "paper", ["a1"]),
+            _c("a1", "ai_inference", ["a2"]),
+            _c("a2", "ai_inference", ["a1", "a3"]),
+            _c("a3", "ai_inference", ["p"]),
+        ]
+    }
+    assert _ids(clean_concepts(s1)) == ["p", "a1", "a2"]
+    loop = {"concepts": [_c("p", "paper", ["p"]), _c("a", "ai_inference", ["b"]), _c("b", "ai_inference", ["a"])]}
+    assert _ids(clean_concepts(loop)) == ["p", "a", "b"]  # 論文の概念から届かないものは数えない
+
+
+def test_step1_applies_the_two_step_limit(fake):
+    s1 = mock.step1(PAGES, "a.pdf")
+    base = s1["concepts"][1]
+    s1["concepts"] = [
+        {**s1["concepts"][0], "id": "p", "origin": "paper", "depends_on": ["x1"]},
+        {**base, "id": "x1", "origin": "ai_inference", "evidence": [], "depends_on": ["x2"]},
+        {**base, "id": "x2", "origin": "ai_inference", "evidence": [], "depends_on": ["x3"]},
+        {**base, "id": "x3", "origin": "ai_inference", "evidence": [], "depends_on": []},
+    ]
+    fake(s1)
+    assert _ids(gemini.step1(b"%PDF", "undergrad")) == ["p", "x1", "x2"]
