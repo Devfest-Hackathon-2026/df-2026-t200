@@ -87,7 +87,7 @@ class SymbolInfo(BaseModel):
 
 
 class Equation(BaseModel):
-    label: str = Field(description="式番号（例: (1)）。無ければ短い名前")
+    label: str = Field(description="式番号（例: (1)）。無ければ式の役割を表す短い名前（例: 開始位置の確率）。LaTeX の記号（_ や ^）は書かない")
     page: int
     latex: str = Field(description="式全体の LaTeX（$ なし、KaTeX で描画可能なもの）")
     plain_meaning: str = Field(description="この式を一言でいうと")
