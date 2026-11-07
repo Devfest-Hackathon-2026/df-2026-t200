@@ -70,7 +70,7 @@ describe('App', () => {
     expect(step2Tab).toHaveAttribute('aria-selected', 'true')
     expect(step2Tab).toHaveFocus()
     await userEvent.keyboard('{End}')
-    expect(screen.getByRole('tab', { name: /誤り探しモード/ })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: /誤り探し/ })).toHaveFocus()
     await userEvent.keyboard('{ArrowRight}')
     expect(step1Tab).toHaveAttribute('aria-selected', 'true')
     await userEvent.keyboard('{ArrowLeft}{ArrowLeft}')
@@ -92,7 +92,7 @@ describe('App', () => {
       expect(screen.queryByText(sentence)).not.toBeInTheDocument()
     }
     expect(getQuiz).not.toHaveBeenCalled() // 別のタブを開くだけでは問題を読み込まない
-    await userEvent.click(screen.getByRole('tab', { name: /誤り探しモード/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /誤り探し/ }))
     expect(await screen.findByText(sentence)).toBeInTheDocument()
   })
 

@@ -12,7 +12,7 @@ export const quiz: Quiz = {
   result: null,
 }
 
-const noKey = { page_ok: null, original: null, changed: null, evidence: null }
+const noKey = { page_ok: null, original: null, changed: null, changed_from: null, changed_to: null, evidence: null }
 
 export const quizResult: Quiz = {
   ...quiz,
@@ -34,7 +34,14 @@ export const quizResult: Quiz = {
         page_ok: true,
         original: '実験では従来手法より誤差が小さかった。',
         changed: '比較の向きを逆にした',
-        evidence: { page: 2, quote: 'the error was smaller than the baseline', verified: true },
+        changed_from: '小さかった',
+        changed_to: '大きかった',
+        evidence: {
+          page: 2,
+          quote: 'In every run the error was smaller than the baseline.',
+          verified: true,
+          quote_span: 'the error was smaller than the baseline',
+        },
       },
     ],
   },

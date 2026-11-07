@@ -1781,6 +1781,7 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   margin-right: 4px;
 }
 .quiz-page {
+  flex-wrap: wrap;
   display: flex;
   gap: 8px;
   align-items: center;

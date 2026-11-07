@@ -1,9 +1,9 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { api, type Quiz, type QuizResultItem } from '../api'
 import { EvidenceChip } from '../jump'
+import { EMPTY_DRAFT, type Draft, type QuizDraft } from './quizDraft'
 
-/** 文ごとの回答の下書き。checked なら誤りだと思っている。page は入力欄の文字列（空なら未入力） */
-type Draft = Record<string, { checked: boolean; page: string }>
+const isAbort = (e: unknown, signal: AbortSignal) => signal.aborted || (e instanceof DOMException && e.name === 'AbortError')
 
 const pageOf = (raw: string, pageCount: number): number | null => {
   const n = Number(raw)
@@ -46,9 +46,18 @@ function ResultRow({ item, index }: { item: QuizResultItem; index: number }) {
         <p>{item.text}</p>
       )}
       {item.altered && item.changed && <p className="muted small">{item.changed}</p>}
+      {item.altered && item.changed_from && item.changed_to && (
+        <p className="small">
+          {item.changed_from} → {item.changed_to}
+        </p>
+      )}
+      {item.altered && item.evidence?.quote_span && <p className="small">原文: “{item.evidence.quote_span}”</p>}
       {item.altered && item.evidence && (
         <p className="quiz-evidence">
-          <EvidenceChip ev={item.evidence} label={`根拠 p.${item.evidence.page} をPDFで開く`} />
+          <EvidenceChip
+            ev={{ ...item.evidence, quote: item.evidence.quote_span ?? item.evidence.quote }}
+            label={`根拠 p.${item.evidence.page} をPDFで開く`}
+          />
           {item.selected && (
             <span className="small">
               あなたの根拠ページ p.{item.user_page}（{item.page_ok ? '正解' : '違います'}）
@@ -61,51 +70,89 @@ function ResultRow({ item, index }: { item: QuizResultItem; index: number }) {
   )
 }
 
-export function QuizPanel({ paperId, pageCount }: { paperId: string; pageCount: number }) {
+export function QuizPanel({
+  paperId,
+  pageCount,
+  draft: draftProp,
+  onDraftChange,
+}: {
+  paperId: string
+  pageCount: number
+  draft?: QuizDraft
+  onDraftChange?: (draft: QuizDraft) => void
+}) {
   const [quiz, setQuiz] = useState<Quiz | null | undefined>(undefined) // undefined = 読み込み中
-  const [draft, setDraft] = useState<Draft>({})
-  const [busy, setBusy] = useState(false)
+  const [localDraft, setLocalDraft] = useState<QuizDraft>(EMPTY_DRAFT)
+  const draft = draftProp ?? localDraft
+  const setDraft = onDraftChange ?? setLocalDraft
+  const [busy, setBusy] = useState<string | null>(null) // 実行中の操作の説明（無ければ null）
   const [error, setError] = useState<string | null>(null)
   const uid = useId()
+  const request = useRef<AbortController | null>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const answered = useRef(false) // 回答した直後だけ、結果の見出しへフォーカスを移す
 
   useEffect(() => {
-    let alive = true
-    api.getQuiz(paperId).then(
-      (r) => alive && setQuiz(r.quiz),
+    const ctl = new AbortController()
+    api.getQuiz(paperId, ctl.signal).then(
+      (r) => !ctl.signal.aborted && setQuiz(r.quiz),
       (e: Error) => {
-        if (!alive) return
+        if (isAbort(e, ctl.signal)) return
         setError(e.message)
         setQuiz(null)
       },
     )
-    return () => {
-      alive = false
-    }
+    return () => ctl.abort()
   }, [paperId])
 
-  const run = async (job: () => Promise<Quiz>, reset: boolean) => {
-    setBusy(true)
+  // 作成と送信の通信は、画面を離れたら中断する
+  useEffect(() => () => request.current?.abort(), [])
+
+  useEffect(() => {
+    if (answered.current && quiz?.submitted && headingRef.current) {
+      headingRef.current.focus()
+      answered.current = false
+    }
+  }, [quiz])
+
+  const run = async (label: string, job: (signal: AbortSignal) => Promise<Quiz>, onDone?: () => void) => {
+    request.current?.abort()
+    const ctl = new AbortController()
+    request.current = ctl
+    setBusy(label)
     setError(null)
     try {
-      const next = await job()
+      const next = await job(ctl.signal)
+      if (ctl.signal.aborted) return
+      onDone?.()
       setQuiz(next)
-      if (reset) setDraft({})
     } catch (e) {
+      if (isAbort(e, ctl.signal)) return
       setError((e as Error).message)
     } finally {
-      setBusy(false)
+      if (!ctl.signal.aborted) setBusy(null)
     }
   }
 
-  const create = (force: boolean) => run(() => api.createQuiz(paperId, force).then((r) => r.quiz), true)
+  const create = (force: boolean) =>
+    run(
+      '問題を作っています…',
+      (signal) => api.createQuiz(paperId, force, signal).then((r) => r.quiz),
+      () => setDraft(EMPTY_DRAFT),
+    )
 
+  const entries = quiz && draft.quizId === quiz.id ? draft.entries : {}
   const picks = quiz
-    ? quiz.items.filter((it) => draft[it.id]?.checked).map((it) => ({ id: it.id, page: pageOf(draft[it.id].page, pageCount) }))
+    ? quiz.items.filter((it) => entries[it.id]?.checked).map((it) => ({ id: it.id, page: pageOf(entries[it.id].page, pageCount) }))
     : []
   const canSubmit = picks.length > 0 && picks.every((p) => p.page !== null)
   const submit = () => {
     if (!quiz || !canSubmit) return
-    return run(() => api.answerQuiz(paperId, quiz.id, picks as { id: string; page: number }[]).then((r) => r.quiz), false)
+    return run(
+      '答え合わせをしています…',
+      (signal) => api.answerQuiz(paperId, quiz.id, picks as { id: string; page: number }[], signal).then((r) => r.quiz),
+      () => (answered.current = true),
+    )
   }
 
   const errorBox = error && (
@@ -113,17 +160,19 @@ export function QuizPanel({ paperId, pageCount }: { paperId: string; pageCount: 
       {error}
     </p>
   )
-  const newButton = (
-    <button type="button" className="btn" onClick={() => create(true)} disabled={busy}>
-      新しい問題
-    </button>
+  const status = busy && (
+    <p className="muted small" role="status">
+      {busy}
+    </p>
   )
 
   if (quiz === undefined) {
     return (
       <div className="quiz">
         <ModeNotice />
-        <p className="muted">読み込んでいます…</p>
+        <p className="muted" role="status">
+          読み込んでいます…
+        </p>
       </div>
     )
   }
@@ -132,10 +181,12 @@ export function QuizPanel({ paperId, pageCount }: { paperId: string; pageCount: 
       <div className="quiz">
         <ModeNotice />
         {errorBox}
-        <button type="button" className="btn primary" onClick={() => create(false)} disabled={busy}>
-          問題を作る
-        </button>
-        {busy && <p className="muted small">問題を作っています…</p>}
+        <div className="quiz-actions">
+          <button type="button" className="btn primary" onClick={() => create(false)} disabled={busy !== null}>
+            問題を作る
+          </button>
+        </div>
+        {status}
       </div>
     )
   }
@@ -145,8 +196,10 @@ export function QuizPanel({ paperId, pageCount }: { paperId: string; pageCount: 
     return (
       <div className="quiz">
         <ModeNotice />
-        <section aria-label="答え合わせ" className="quiz-result">
-          <h3>答え合わせ</h3>
+        <section aria-labelledby={`${uid}-result`} className="quiz-result">
+          <h3 id={`${uid}-result`} ref={headingRef} tabIndex={-1}>
+            答え合わせ
+          </h3>
           <p className="quiz-score">
             <strong>
               見つけた誤り {r.found} / {r.total_errors} 件
@@ -161,7 +214,12 @@ export function QuizPanel({ paperId, pageCount }: { paperId: string; pageCount: 
           </ol>
         </section>
         {errorBox}
-        {newButton}
+        <div className="quiz-actions">
+          <button type="button" className="btn" onClick={() => create(true)} disabled={busy !== null}>
+            新しい問題
+          </button>
+        </div>
+        {status}
       </div>
     )
   }
@@ -174,8 +232,9 @@ export function QuizPanel({ paperId, pageCount }: { paperId: string; pageCount: 
       </p>
       <ol className="quiz-rows">
         {quiz.items.map((it, i) => {
-          const d = draft[it.id] ?? { checked: false, page: '' }
-          const set = (patch: Partial<Draft[string]>) => setDraft((cur) => ({ ...cur, [it.id]: { ...d, ...patch } }))
+          const d = entries[it.id] ?? { checked: false, page: '' }
+          const set = (patch: Partial<Draft[string]>) => setDraft({ quizId: quiz.id, entries: { ...entries, [it.id]: { ...d, ...patch } } })
+          const invalid = d.checked && d.page.trim() !== '' && pageOf(d.page, pageCount) === null
           return (
             <li key={it.id} className={`quiz-row ${d.checked ? 'selected' : ''}`}>
               <label className="quiz-pick">
@@ -191,17 +250,26 @@ export function QuizPanel({ paperId, pageCount }: { paperId: string; pageCount: 
                 </span>
               </label>
               {d.checked && (
-                <label className="quiz-page small">
-                  根拠のページ
-                  <input
-                    type="number"
-                    min={1}
-                    max={pageCount}
-                    value={d.page}
-                    onChange={(e) => set({ page: e.target.value })}
-                    aria-label={`文${i + 1}の根拠ページ`}
-                  />
-                </label>
+                <div className="quiz-page small">
+                  <label>
+                    根拠のページ
+                    <input
+                      type="number"
+                      min={1}
+                      max={pageCount}
+                      value={d.page}
+                      onChange={(e) => set({ page: e.target.value })}
+                      aria-label={`文${i + 1}の根拠ページ`}
+                      aria-invalid={invalid || undefined}
+                      aria-describedby={invalid ? `${uid}-${it.id}-hint` : undefined}
+                    />
+                  </label>
+                  {invalid && (
+                    <span id={`${uid}-${it.id}-hint`} className="error">
+                      ページは1〜{pageCount}の整数で入力してください
+                    </span>
+                  )}
+                </div>
               )}
             </li>
           )
@@ -209,11 +277,11 @@ export function QuizPanel({ paperId, pageCount }: { paperId: string; pageCount: 
       </ol>
       {errorBox}
       <div className="quiz-actions">
-        <button type="button" className="btn primary" onClick={submit} disabled={!canSubmit || busy}>
+        <button type="button" className="btn primary" onClick={submit} disabled={!canSubmit || busy !== null}>
           答え合わせ
         </button>
-        {newButton}
       </div>
+      {status}
     </div>
   )
 }

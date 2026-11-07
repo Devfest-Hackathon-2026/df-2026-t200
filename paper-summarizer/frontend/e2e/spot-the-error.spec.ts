@@ -12,7 +12,7 @@ test('creates a spot-the-error quiz, answers it and sees the result', async ({ p
   await expect(page.getByRole('button', { name: '書かずに解説を見る' })).toBeVisible({ timeout: 20_000 })
   await expect(page.locator('.spinner')).toHaveCount(0, { timeout: 20_000 })
 
-  await page.getByRole('tab', { name: /誤り探しモード/ }).click()
+  await page.getByRole('tab', { name: /誤り探し/ }).click()
   await expect(page.getByText(/わざと誤りを混ぜた文が含まれます/)).toBeVisible()
   await page.getByRole('button', { name: '問題を作る' }).click()
   const boxes = page.getByRole('checkbox')
@@ -31,7 +31,7 @@ test('creates a spot-the-error quiz, answers it and sees the result', async ({ p
   // 開き直しても同じ問題（作り直さない）
   const firstText = await page.locator('.quiz-rows li').first().innerText()
   await page.reload()
-  await page.getByRole('tab', { name: /誤り探しモード/ }).click()
+  await page.getByRole('tab', { name: /誤り探し/ }).click()
   await expect(page.locator('.quiz-rows li').first()).toHaveText(firstText, { timeout: 20_000 })
 
   // 全部の文を選ぶと、誤りは必ず見つかり、残りは「正しい文を誤りとした数」になる
@@ -61,7 +61,38 @@ test('creates a spot-the-error quiz, answers it and sees the result', async ({ p
   expect(paper).not.toContain('【デモ・誤り】')
 
   // 新しい問題も作れる
-  await page.getByRole('tab', { name: /誤り探しモード/ }).click()
+  await page.getByRole('tab', { name: /誤り探し/ }).click()
   await page.getByRole('button', { name: '新しい問題' }).click()
   await expect(page.getByRole('checkbox').first()).toBeVisible({ timeout: 20_000 })
+})
+
+test('keeps the draft when switching tabs, and the four tabs fit a 360px screen', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 })
+  await page.goto('/')
+  await page.locator('input[type=file]').setInputFiles(SAMPLE_PDF)
+  await expect(page).toHaveURL(/#\/paper\/[0-9a-f]{16}$/)
+  await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeVisible({ timeout: 20_000 })
+  // タブの文言が切れたりはみ出したりしない
+  for (const name of [/前提知識/, /手法の流れと図表/, /批判的思考/, /誤り探し/]) {
+    const tab = page.getByRole('tab', { name })
+    const box = (await tab.boundingBox())!
+    expect(box.x + box.width).toBeLessThanOrEqual(360)
+    for (const el of await tab.locator('.tab-title, .tab-verb').all()) {
+      expect(await el.evaluate((n) => n.scrollWidth <= n.clientWidth + 1)).toBe(true)
+    }
+  }
+  expect(await page.locator('html').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+
+  await page.getByRole('tab', { name: /誤り探し/ }).click()
+  await expect(page.locator('.spinner')).toHaveCount(0, { timeout: 20_000 })
+  await page.getByRole('button', { name: '問題を作る' }).click()
+  await page.getByRole('checkbox', { name: /文2/ }).check({ timeout: 20_000 })
+  await page.getByLabel('文2の根拠ページ').fill('2')
+  // 別のタブへ移って戻っても、チェックとページが残る
+  await page.getByRole('tab', { name: /前提知識/ }).click()
+  await page.getByRole('tab', { name: /誤り探し/ }).click()
+  await expect(page.getByRole('checkbox', { name: /文2/ })).toBeChecked()
+  await expect(page.getByLabel('文2の根拠ページ')).toHaveValue('2')
+  // 回答前は「新しい問題」を出さない
+  await expect(page.getByRole('button', { name: '新しい問題' })).toHaveCount(0)
 })

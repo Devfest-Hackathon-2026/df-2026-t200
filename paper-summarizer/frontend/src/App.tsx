@@ -6,6 +6,7 @@ import { clampSplit, isSplit, SPLIT_DEFAULT, splitBounds } from './components/pa
 import type { PdfViewerHandle } from './components/PdfViewer'
 import { QaPanel } from './components/QaPanel'
 import { QuizPanel } from './components/QuizPanel'
+import { EMPTY_DRAFT, type QuizDraft } from './components/quizDraft'
 import { Step1Map } from './components/Step1Map'
 import { Step2Walkthrough } from './components/Step2Walkthrough'
 import { Step3Critical } from './components/Step3Critical'
@@ -31,7 +32,7 @@ const STEPS = [
   { n: 2, key: 'step2', title: '手法の流れと図表', verb: '追う' },
   { n: 3, key: 'step3', title: '批判的思考チェック', verb: '疑う' },
   // Step 1〜3 とは別のモード。わざと誤りを混ぜた文が出るので、解説とは別のタブに分ける
-  { n: 4, key: 'quiz', title: '誤り探しモード', verb: '試す' },
+  { n: 4, key: 'quiz', title: '誤り探し', verb: '試す' },
 ] as const
 
 /** これ以下の幅では PDF と解説を並べず、タブで切り替える（index.css の @media と同じ値） */
@@ -49,6 +50,8 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
   const [retryError, setRetryError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
   const [step, setStep] = useState(1)
+  // 誤り探しの下書き（チェックとページ）。タブを移っても残す。論文ごとに PaperView を作り直すので論文ごとになる
+  const [quizDraft, setQuizDraft] = useState<QuizDraft>(EMPTY_DRAFT)
   const [view, setView] = useState<'pdf' | 'explain'>('explain')
   const viewer = useRef<PdfViewerHandle | null>(null)
   // PdfViewer は遅延読み込みなので、マウント前に頼まれた移動は最新の 1 件だけ覚え、マウント時に渡す
@@ -190,7 +193,7 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
                 (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
               {step === 4 &&
                 (paper.status === 'done' && r.step2 && r.step3 ? (
-                  <QuizPanel paperId={id} pageCount={paper.page_count} />
+                  <QuizPanel paperId={id} pageCount={paper.page_count} draft={quizDraft} onDraftChange={setQuizDraft} />
                 ) : (
                   <Pending working={working} label="誤り探しの元になる解説" />
                 ))}

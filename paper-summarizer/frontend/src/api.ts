@@ -83,7 +83,10 @@ export type QuizResultItem = {
   /** 誤りの文のときだけ入る */
   original: string | null
   changed: string | null
-  evidence: Evidence | null
+  changed_from: string | null
+  changed_to: string | null
+  /** quote_span は、quote のうち、変えた事実を述べている部分 */
+  evidence: (Evidence & { quote_span?: string }) | null
 }
 export type QuizResult = { found: number; false_alarms: number; missed: number; total_errors: number; items: QuizResultItem[] }
 export type Quiz = { id: string; created_at: string; submitted: boolean; items: QuizItem[]; result: QuizResult | null }
@@ -158,19 +161,21 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ question, current_step: currentStep }),
     }).then((r) => json<{ messages: Message[] }>(r)),
-  getQuiz: (id: string) => fetch(`/api/papers/${id}/quiz`).then((r) => json<{ quiz: Quiz | null }>(r)),
+  getQuiz: (id: string, signal?: AbortSignal) => fetch(`/api/papers/${id}/quiz`, { signal }).then((r) => json<{ quiz: Quiz | null }>(r)),
   /** force なしなら、問題があればそれを返す（Gemini を呼ばない）。force は「新しい問題」で、上限に数えられる */
-  createQuiz: (id: string, force = false) =>
+  createQuiz: (id: string, force = false, signal?: AbortSignal) =>
     fetch(`/api/papers/${id}/quiz`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ force }),
+      signal,
     }).then((r) => json<{ quiz: Quiz }>(r)),
-  answerQuiz: (id: string, quizId: string, picks: QuizPick[]) =>
+  answerQuiz: (id: string, quizId: string, picks: QuizPick[], signal?: AbortSignal) =>
     fetch(`/api/papers/${id}/quiz/${quizId}/answer`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ picks }),
+      signal,
     }).then((r) => json<{ quiz: Quiz }>(r)),
   pdfUrl: (id: string) => `/api/papers/${id}/pdf`,
 }
