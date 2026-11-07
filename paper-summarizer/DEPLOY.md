@@ -76,6 +76,8 @@ PROJECT_ID=<プロジェクト ID> MIN_INSTANCES=1 ./deploy.sh api
 | `MAX_UPLOADS_PER_DAY` | 100 | アップロード（解析しない使い回しも含む） |
 | `ASK_GLOBAL_PER_MIN` | 20 | 1分あたりの質問（全論文の合計） |
 
+`deploy.sh api`は、解析と質問の上限を毎回`MAX_ANALYSES_PER_DAY`（既定10）と`MAX_ASKS_PER_DAY`（既定50）で上書きする。既定は審査期間に合わせて低くしてある。変えるときは`MAX_ANALYSES_PER_DAY=30 PROJECT_ID=... ./deploy.sh api`のように渡す。
+
 Geminiを止めたいときは、上限を0にして環境変数だけを書き換える。イメージは作り直さないので、すぐに反映される。
 
 ```bash
