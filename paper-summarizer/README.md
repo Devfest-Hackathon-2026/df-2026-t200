@@ -56,7 +56,7 @@ GitHub Actions（`.github/workflows/ci.yml`）で、PR と main への push ご�
 ## 構成
 
 ```
-backend/   FastAPI + google-genai（Gemini に PDF をネイティブ入力）+ PyMuPDF（引用の照合）
+backend/   FastAPI + google-genai（Gemini に PDF をネイティブ入力）+ pypdfium2（引用の照合）
   app/main.py       API（HTTP の入出力と入力チェック）
   app/services.py   解析ジョブと Q&A の組み立て（Step 1→2→3 を順に生成し、できた順に保存）。Gemini 版とデモ版の解析器を論文ごとに選ぶ
   app/store.py      保存層（読み込みから保存までを1つのロックで行う）

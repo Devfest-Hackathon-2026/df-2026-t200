@@ -96,7 +96,7 @@ MVP（F-01〜F-06）は本番のURLで動いている。e2eテスト（Playwrigh
 | 将来の解析の非同期処理 | Cloud Tasks | Pub/Sub、同期処理 | 同時実行数の上限とリトライを設定だけで持てる（#8） |
 | 将来の認証 | Firebase Anonymous Auth | Googleログイン必須 | 審査員がログインなしで試せ、本人のデータだけを見せられる（#10） |
 
-フロントエンドはVite、React、TypeScript、pdf.js、KaTeXで作り、Firebase Hostingで配信する。バックエンドはFastAPIとgoogle-genaiで、引用の照合にPyMuPDFを使う。モデルは環境変数で入れ替えられるようにしており、既定値は解析もQ&Aもgemini-3.6-flash（`GOOGLE_CLOUD_LOCATION=global`）。
+フロントエンドはVite、React、TypeScript、pdf.js、KaTeXで作り、Firebase Hostingで配信する。バックエンドはFastAPIとgoogle-genaiで、引用の照合にpypdfium2（PDFium）を使う。モデルは環境変数で入れ替えられるようにしており、既定値は解析もQ&Aもgemini-3.6-flash（`GOOGLE_CLOUD_LOCATION=global`）。
 
 ### 今の本番構成
 
@@ -229,5 +229,5 @@ thinkingをlowにしても、引用の照合の結果は落ちなかった（照
 - [x] 解析とQ&Aに使うモデル。gemini-3.6-flashのまま、考える量（thinking）をlowにした。解析1回約$0.048、質問1回約$0.010（#12）
 - [ ] 本番でのファイル上限を20MBのままにするか、50MBに上げるか
 - [x] 出力言語の切替（#16）を提出までに入れるか。アップロード時に選べるようにした。論文を開いたあとの切替は再解析が要るので入れていない
-- [ ] PyMuPDFのライセンス（AGPL-3.0）への対応。ネットワーク越しに使わせる場合は利用者にソースコードを提供する条件があるので、リポジトリの公開で足りるか、別のライブラリに替えるかを決める
+- [x] PyMuPDFのライセンス（AGPL-3.0）への対応。照合の精度が変わらないことを確かめたうえで、pypdfium2（Apache-2.0またはBSD-3-Clause）に置き換えた
 - [ ] アップロードされたPDFと解析結果を、一定期間後に自動で消すか

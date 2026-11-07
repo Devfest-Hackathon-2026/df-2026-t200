@@ -1,12 +1,13 @@
-import pymupdf
 import pytest
+from make_sample_pdf import build_pdf
 
+from app import pdf_utils
 from app.pdf_utils import TooManyPages, TooMuchText, extract_pages, normalize, verify_all, verify_evidence
 
 
 def test_extract_pages_rejects_page_count_before_reading_text(sample_pdf, monkeypatch):
     calls = []
-    monkeypatch.setattr(pymupdf.Page, "get_text", lambda *_a, **_k: calls.append(1) or "")
+    monkeypatch.setattr(pdf_utils, "_page_text", lambda *_a, **_k: calls.append(1) or "")
     with pytest.raises(TooManyPages) as e:
         extract_pages(sample_pdf, max_pages=2)
     assert e.value.count == 3
@@ -15,7 +16,7 @@ def test_extract_pages_rejects_page_count_before_reading_text(sample_pdf, monkey
 
 def test_extract_pages_stops_when_text_exceeds_limit(sample_pdf, monkeypatch):
     calls = []
-    monkeypatch.setattr(pymupdf.Page, "get_text", lambda *_a, **_k: calls.append(1) or "x" * 100)
+    monkeypatch.setattr(pdf_utils, "_page_text", lambda *_a, **_k: calls.append(1) or "x" * 100)
     with pytest.raises(TooMuchText):
         extract_pages(sample_pdf, max_chars=150)
     assert len(calls) == 2  # 上限を超えた時点で抽出をやめる
@@ -25,6 +26,35 @@ def test_extract_pages_returns_text_per_page(sample_pdf):
     pages = extract_pages(sample_pdf)
     assert len(pages) == 3
     assert "page 2 of the sample" in pages[1]
+
+
+def test_extract_pages_keeps_line_end_hyphenation_as_hyphen_and_newline():
+    # PDFium は行末のハイフネーションを U+FFFE にして改行を消すので、「-\n」に戻す（normalize が語をつなげられる形）
+    pdf = build_pdf([["We train a deep bidirectional representa-", "tion of the input tokens."]])
+    (text,) = extract_pages(pdf)
+    assert "\ufffe" not in text
+    assert "\r" not in text
+    assert "representa-\ntion" in text
+    pages = [normalize(text)]
+    assert verify_evidence({"page": 1, "quote": "We train a deep bidirectional representation of the input"}, pages)["verified"] is True
+
+
+def test_extract_pages_returns_empty_text_for_blank_page():
+    assert [p.strip() for p in extract_pages(build_pdf([[], ["Some text on the second page."]]))] == ["", "Some text on the second page."]
+
+
+def test_extract_pages_raises_on_broken_pdf():
+    with pytest.raises(Exception):  # noqa: B017  main.py はどの例外でも「読み込めませんでした」を返す
+        extract_pages(b"%PDF-1.7 broken")
+
+
+def test_extract_pages_is_safe_to_call_from_many_threads(sample_pdf):
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _i: extract_pages(sample_pdf), range(32)))
+    assert all(r == results[0] for r in results)
+    assert "page 3 of the sample" in results[0][2]
 
 
 def test_normalize_joins_hyphenation_and_strips_symbols():
