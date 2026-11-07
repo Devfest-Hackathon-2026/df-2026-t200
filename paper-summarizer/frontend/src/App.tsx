@@ -110,7 +110,6 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
             <h1>{r.step1?.title ?? paper.filename}</h1>
             <span className="paper-meta">
               <span className="muted small">全{paper.page_count}ページ</span>
-              <span className="tag">{paper.level === 'grad' ? '大学院生向け' : '学部生向け'}</span>
             </span>
           </div>
           <TabList

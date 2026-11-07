@@ -111,6 +111,16 @@ def test_list_papers_includes_uploaded(client, sample_pdf):
     assert [p["id"] for p in client.get("/api/papers", headers=CLIENT).json()] == [pid]
 
 
+def test_upload_without_level_defaults_to_undergrad_and_reuses_it(client, sample_pdf):
+    # UI は level を送らない。省略は undergrad になり、前の undergrad の解析を使い回す
+    files = {"file": ("a.pdf", sample_pdf, "application/pdf")}
+    pid = client.post("/api/papers", files=files, headers=CLIENT).json()["id"]
+    _wait_done(client, pid)
+    assert client.get(f"/api/papers/{pid}").json()["level"] == "undergrad"
+    again = _upload(client, sample_pdf).json()
+    assert again["reused"] is True
+
+
 def test_list_papers_shows_the_level(client, sample_pdf):
     # アップロード画面の「これまでの論文」に、どのレベルで解析したかを出す
     pid = _upload(client, sample_pdf, level="grad").json()["id"]
