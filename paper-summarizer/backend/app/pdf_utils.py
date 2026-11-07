@@ -6,10 +6,15 @@ Gemini の引用を鵜呑みにせず、実際に PDF の該当ページに存�
 
 import math
 import re
+import threading
 import unicodedata
 from typing import Any
 
-import pymupdf
+import pypdfium2 as pdfium
+
+# PDFium は同じプロセスの複数スレッドから同時に呼べない（pypdfium2 も排他しない）。
+# アップロードはスレッドプールで、解析はバックグラウンドスレッドで動くので、PDFium の呼び出しはこのロックの中だけで行う。
+_PDFIUM_LOCK = threading.Lock()
 
 
 class TooManyPages(ValueError):
@@ -22,24 +27,52 @@ class TooMuchText(ValueError):
     pass
 
 
+def _page_text(page: pdfium.PdfPage) -> str:
+    """1ページの本文を返す。改行は \\n にそろえる。
+
+    PDFium は行末のハイフネーション（Atten-\\ntion）を U+FFFE 1文字に置き換えて改行を消すので、
+    「-\\n」に戻す。normalize が語をつなげられ、PyMuPDF で抽出していたころと同じ形になる。
+    """
+    textpage = page.get_textpage()
+    try:
+        text = textpage.get_text_range()
+    finally:
+        textpage.close()
+    return text.replace("\r\n", "\n").replace("\r", "\n").replace("\ufffe", "-\n")
+
+
 def extract_pages(pdf_bytes: bytes, max_pages: int | None = None, max_chars: int | None = None) -> list[str]:
     """ページごとの本文を返す。
 
     max_pages を超えるページ数なら、本文を抽出する前に TooManyPages を出す（重い PDF で CPU とメモリを使い切らない）。
     抽出した文字数の合計が max_chars を超えたら、その時点で TooMuchText を出す。
+    壊れた PDF やパスワード付きの PDF は pypdfium2 の PdfiumError を出す。
     """
-    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
-        if max_pages is not None and len(doc) > max_pages:
-            raise TooManyPages(len(doc))
+    with _PDFIUM_LOCK:
+        return _extract_locked(pdf_bytes, max_pages, max_chars)
+
+
+def _extract_locked(pdf_bytes: bytes, max_pages: int | None, max_chars: int | None) -> list[str]:
+    doc = pdfium.PdfDocument(pdf_bytes)
+    try:
+        count = len(doc)
+        if max_pages is not None and count > max_pages:
+            raise TooManyPages(count)
         pages: list[str] = []
         total = 0
-        for page in doc:
-            text = page.get_text()
+        for i in range(count):
+            page = doc[i]
+            try:
+                text = _page_text(page)
+            finally:
+                page.close()
             total += len(text)
             if max_chars is not None and total > max_chars:
                 raise TooMuchText(f"text exceeds {max_chars} chars")
             pages.append(text)
         return pages
+    finally:
+        doc.close()
 
 
 # 引用として認める最低の長さ。「the model」のような短い句はほぼどのページにもあるので根拠にならない。

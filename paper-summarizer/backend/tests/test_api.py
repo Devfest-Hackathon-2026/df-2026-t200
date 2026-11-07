@@ -5,13 +5,12 @@ import json
 import threading
 import time
 
-import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 from google.genai import errors as genai_errors
-from make_sample_pdf import make_pdf
+from make_sample_pdf import build_pdf, make_pdf
 
-from app import config, errors, main, mock, store
+from app import config, errors, main, mock, pdf_utils, store
 from app.errors import EmptyResponseError
 from app.ratelimit import RateLimiter
 from app.services import PaperService
@@ -142,9 +141,7 @@ def test_upload_rejects_broken_pdf(client):
 
 
 def test_upload_rejects_pdf_without_text(client):
-    doc = pymupdf.open()
-    doc.new_page()
-    res = _upload(client, doc.tobytes())
+    res = _upload(client, build_pdf([[]]))
     assert res.status_code == 400
     assert "テキスト" in res.json()["detail"]
 
@@ -160,7 +157,7 @@ def test_upload_checks_page_count_before_extracting_text(client, monkeypatch):
         raise AssertionError("本文を抽出する前にページ数で弾くこと")
 
     monkeypatch.setattr(config, "MAX_PAGES", 2)
-    monkeypatch.setattr(pymupdf.Page, "get_text", no_extract)
+    monkeypatch.setattr(pdf_utils, "_page_text", no_extract)
     res = _upload(client, make_pdf(3))
     assert res.status_code == 413
     assert "3 ページ" in res.json()["detail"]
