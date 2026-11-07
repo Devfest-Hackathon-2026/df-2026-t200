@@ -202,3 +202,14 @@ def test_generate_leaves_thinking_to_the_model_when_level_is_empty(fake, monkeyp
 
 def test_thinking_level_defaults_to_low():
     assert config.THINKING_LEVEL == "low"
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("low", "low"), (" LOW ", "low"), ("minimal", "minimal"), ("", ""), ("high", "high")])
+def test_thinking_level_is_normalized(raw, expected):
+    assert config.thinking_level(raw) == expected
+
+
+def test_unknown_thinking_level_fails_at_startup():
+    # 打ち間違いのまま動くと、Gemini の呼び出しがすべて失敗する。起動の時点で止める
+    with pytest.raises(ValueError, match="THINKING_LEVEL"):
+        config.thinking_level("lo")
