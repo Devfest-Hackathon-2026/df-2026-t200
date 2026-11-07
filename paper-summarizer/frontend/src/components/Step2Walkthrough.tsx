@@ -59,10 +59,12 @@ export function Step2Walkthrough({ data, paperId, concepts, onOpenConcept, focus
   }, [jump, data])
 
   // 学生が段階を移動したときは、その段階の根拠へ移動する（狭い画面では PDF を表示する）
-  const goTo = (k: number) => {
+  const goTo = (k: number, options?: JumpOptions) => {
     setI(k)
-    jumpToStage(jump, data.stages[k], undefined, frameEvidenceAt(data, k))
+    jumpToStage(jump, data.stages[k], options, frameEvidenceAt(data, k))
   }
+  // 流れ図のコマ移動では PDF タブへ切り替えない（図を追えなくなるため。PDF は表示されたときに移動する）
+  const goToFromFlow = (k: number) => goTo(k, { switchView: false })
   const jumpToNode = (n: FlowNode) => {
     const ev = n.evidence?.[0]
     if (ev) jump(ev.page, ev.quote)
@@ -74,7 +76,7 @@ export function Step2Walkthrough({ data, paperId, concepts, onOpenConcept, focus
       <section className="block">
         <h2>手法の流れ</h2>
         <p className="lead">{data.overview}</p>
-        {data.flow && <FlowDiagram flow={data.flow} total={data.stages.length} index={i} onGo={goTo} onNode={jumpToNode} />}
+        {data.flow && <FlowDiagram flow={data.flow} total={data.stages.length} index={i} onGo={goToFromFlow} onNode={jumpToNode} />}
         <ol className="stepper">
           {data.stages.map((s, k) => (
             <li key={k}>

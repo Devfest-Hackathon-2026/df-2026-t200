@@ -49,15 +49,26 @@ export function FlowDiagram({
   const activeKey = (frame?.active_nodes ?? []).join('\n')
   useEffect(() => {
     const el = scroller.current
-    if (!el || el.scrollWidth <= el.clientWidth) return
-    const xs = (activeKey ? activeKey.split('\n') : []).flatMap((id) => {
-      const p = layout.pos.get(id)
-      return p ? [p.x] : []
+    if (!el) return
+    const center = () => {
+      if (el.scrollWidth <= el.clientWidth) return
+      const xs = (activeKey ? activeKey.split('\n') : []).flatMap((id) => {
+        const p = layout.pos.get(id)
+        return p ? [p.x] : []
+      })
+      if (xs.length === 0) return
+      const mid = (Math.min(...xs) + Math.max(...xs) + FLOW_NODE_W) / 2
+      const left = Math.max(0, Math.min(mid - el.clientWidth / 2, el.scrollWidth - el.clientWidth))
+      el.scrollTo?.({ left, behavior: reduced ? 'auto' : 'smooth' })
+    }
+    center()
+    // 狭い画面で PDF タブを見ている間は図が非表示で寸法が 0 になる。表示に戻ったときにやり直す
+    if (typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) center()
     })
-    if (xs.length === 0) return
-    const mid = (Math.min(...xs) + Math.max(...xs) + FLOW_NODE_W) / 2
-    const left = Math.max(0, Math.min(mid - el.clientWidth / 2, el.scrollWidth - el.clientWidth))
-    el.scrollTo?.({ left, behavior: reduced ? 'auto' : 'smooth' })
+    io.observe(el)
+    return () => io.disconnect()
   }, [activeKey, layout, reduced])
 
   const box = useRef<HTMLDivElement>(null)

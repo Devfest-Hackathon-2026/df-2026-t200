@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { api, type Message } from '../api'
 import { EvidenceList } from '../jump'
 import { scrollWithin } from '../motion'
+import { renderInline } from './inlineMarkdown'
 
 const SOURCE_LABEL: Record<string, { text: string; cls: string }> = {
   paper: { text: '論文に記載', cls: 'paper' },
@@ -121,7 +122,7 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
                     {m.confidence && <span className="tag">確信度 {{ high: '高', medium: '中', low: '低' }[m.confidence]}</span>}
                   </div>
                 )}
-                <div className="msg-text">{m.text}</div>
+                <div className="msg-text">{renderInline(m.text)}</div>
                 {m.evidence && <EvidenceList items={m.evidence} />}
               </div>
             ))}

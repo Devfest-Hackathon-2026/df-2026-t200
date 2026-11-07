@@ -436,6 +436,13 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   cursor: pointer;
   white-space: nowrap;
 }
+/* 長い概念名は幅を超えたら折り返す（短いチップの見た目は変わらない） */
+.chips .chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
 .chip::after {
   content: '';
   position: absolute;

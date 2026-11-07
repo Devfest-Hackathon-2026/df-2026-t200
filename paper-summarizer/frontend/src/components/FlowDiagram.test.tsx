@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Flow } from '../api'
@@ -174,10 +174,25 @@ describe('Step2Walkthrough with a flow', () => {
     await userEvent.click(screen.getByRole('button', { name: '次へ' }))
     expect(screen.getByRole('heading', { name: '2. 出力' })).toBeInTheDocument()
     expect(screen.getAllByText('2 / 2')).toHaveLength(2) // 流れ図と段階の両方
-    expect(jump).toHaveBeenCalledWith(6, 'softmax over vocabulary')
+    expect(jump).toHaveBeenCalledWith(6, 'softmax over vocabulary', { switchView: false })
     await userEvent.click(screen.getByRole('button', { name: '前へ' }))
     expect(screen.getByRole('heading', { name: '1. 入力の埋め込み' })).toBeInTheDocument()
-    expect(jump).toHaveBeenLastCalledWith(2, 'we embed tokens')
+    expect(jump).toHaveBeenLastCalledWith(2, 'we embed tokens', { switchView: false })
+  })
+
+  it('does not switch to the PDF tab when stepping with the arrow keys', async () => {
+    const jump = renderStep2()
+    screen.getByRole('group', { name: /手法の流れ図/ }).focus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(jump).toHaveBeenLastCalledWith(6, 'softmax over vocabulary', { switchView: false })
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(jump).toHaveBeenLastCalledWith(2, 'we embed tokens', { switchView: false })
+  })
+
+  it('still switches the view when a stage button is used', async () => {
+    const jump = renderStep2()
+    await userEvent.click(screen.getByRole('button', { name: '次の段階へ' }))
+    expect(jump).toHaveBeenLastCalledWith(6, 'softmax over vocabulary')
   })
 
   it('moves the diagram when the stage is changed with the existing buttons', async () => {
@@ -242,6 +257,38 @@ describe('FlowDiagram scrolling', () => {
     const scrollTo = fakeScroller(2000)
     render(<FlowDiagram flow={wide} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
     expect(scrollTo).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
+  })
+
+  it('scrolls to the active nodes again when the scroller becomes visible', () => {
+    const scrollTo = fakeScroller(400)
+    let notify: (e: Partial<IntersectionObserverEntry>[]) => void = () => {}
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb: typeof notify) {
+          notify = cb
+        }
+        observe() {}
+        disconnect() {}
+      },
+    )
+    render(<FlowDiagram flow={wide} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
+    scrollTo.mockClear()
+    act(() => notify([{ isIntersecting: false }]))
+    expect(scrollTo).not.toHaveBeenCalled()
+    act(() => notify([{ isIntersecting: true }]))
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    expect((scrollTo.mock.lastCall![0] as { left: number }).left).toBeGreaterThan(800)
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('works without IntersectionObserver', () => {
+    fakeScroller(400)
+    vi.stubGlobal('IntersectionObserver', undefined)
+    expect(() => render(<FlowDiagram flow={wide} total={2} index={1} onGo={() => {}} onNode={() => {}} />)).not.toThrow()
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 })
