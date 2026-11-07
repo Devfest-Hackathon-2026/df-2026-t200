@@ -32,7 +32,7 @@ const renderStep2 = (data = step2WithFlow) => {
 
 describe('FlowDiagram', () => {
   it('shows the note, the caption of the current frame and one labelled button per node', () => {
-    render(<FlowDiagram flow={flow} index={0} onGo={() => {}} onNode={() => {}} />)
+    render(<FlowDiagram flow={flow} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
     expect(screen.getByText('AIが論文から作った図解です。根拠ページで確かめてください')).toBeInTheDocument()
     expect(screen.getByText('単語をベクトルにする')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /入力の単語.*入力.*形 n×d/ })).toHaveAttribute('aria-current', 'step')
@@ -40,38 +40,38 @@ describe('FlowDiagram', () => {
   })
 
   it('keeps the full text of long labels in the title', () => {
-    render(<FlowDiagram flow={flow} index={0} onGo={() => {}} onNode={() => {}} />)
+    render(<FlowDiagram flow={flow} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
     const long = '特徴量ベース手法とファインチューニング手法の確率'
     expect(screen.getByTitle(long)).toBeInTheDocument()
   })
 
   it('does not show the shape when the paper does not give one', () => {
-    render(<FlowDiagram flow={flow} index={0} onGo={() => {}} onNode={() => {}} />)
+    render(<FlowDiagram flow={flow} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
     expect(screen.queryByText('null')).not.toBeInTheDocument()
     expect(screen.getAllByText(/n×d/)).toHaveLength(1)
   })
 
   it('draws a moving dot on active edges only, and none with reduced motion', () => {
-    const { container, unmount } = render(<FlowDiagram flow={flow} index={1} onGo={() => {}} onNode={() => {}} />)
+    const { container, unmount } = render(<FlowDiagram flow={flow} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
     expect(container.querySelectorAll('.flow-dot')).toHaveLength(1)
     expect(container.querySelector('.flow-edge.active')).not.toBeNull()
     unmount()
-    const first = render(<FlowDiagram flow={flow} index={0} onGo={() => {}} onNode={() => {}} />)
+    const first = render(<FlowDiagram flow={flow} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
     expect(first.container.querySelectorAll('.flow-dot')).toHaveLength(0)
     first.unmount()
     mockReducedMotion(true)
-    const reduced = render(<FlowDiagram flow={flow} index={1} onGo={() => {}} onNode={() => {}} />)
+    const reduced = render(<FlowDiagram flow={flow} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
     expect(reduced.container.querySelectorAll('.flow-dot')).toHaveLength(0)
     expect(reduced.container.querySelector('.flow-edge.active')).not.toBeNull() // 強調は残す
   })
 
   it('steps with the buttons and disables them at both ends', async () => {
     const onGo = vi.fn()
-    const { rerender } = render(<FlowDiagram flow={flow} index={0} onGo={onGo} onNode={() => {}} />)
+    const { rerender } = render(<FlowDiagram flow={flow} total={2} index={0} onGo={onGo} onNode={() => {}} />)
     expect(screen.getByRole('button', { name: '前へ' })).toBeDisabled()
     await userEvent.click(screen.getByRole('button', { name: '次へ' }))
     expect(onGo).toHaveBeenCalledWith(1)
-    rerender(<FlowDiagram flow={flow} index={1} onGo={onGo} onNode={() => {}} />)
+    rerender(<FlowDiagram flow={flow} total={2} index={1} onGo={onGo} onNode={() => {}} />)
     expect(screen.getByRole('button', { name: '次へ' })).toBeDisabled()
     await userEvent.click(screen.getByRole('button', { name: '前へ' }))
     expect(onGo).toHaveBeenLastCalledWith(0)
@@ -79,7 +79,7 @@ describe('FlowDiagram', () => {
 
   it('steps with the arrow keys while the diagram is focused, and not beyond the ends', async () => {
     const onGo = vi.fn()
-    render(<FlowDiagram flow={flow} index={0} onGo={onGo} onNode={() => {}} />)
+    render(<FlowDiagram flow={flow} total={2} index={0} onGo={onGo} onNode={() => {}} />)
     const group = screen.getByRole('group', { name: /手法の流れ図/ })
     group.focus()
     await userEvent.keyboard('{ArrowLeft}')
@@ -90,20 +90,72 @@ describe('FlowDiagram', () => {
 
   it('reports the node that is clicked', async () => {
     const onNode = vi.fn()
-    render(<FlowDiagram flow={flow} index={0} onGo={() => {}} onNode={onNode} />)
+    render(<FlowDiagram flow={flow} total={2} index={0} onGo={() => {}} onNode={onNode} />)
     await userEvent.click(screen.getByRole('button', { name: /入力の単語/ }))
     expect(onNode).toHaveBeenCalledWith(flow.nodes[0])
   })
 
   it('does not highlight anything for a stage without a frame', () => {
     const partial = { ...flow, frames: [flow.frames[0]] }
-    const { container } = render(<FlowDiagram flow={partial} index={1} onGo={() => {}} onNode={() => {}} />)
+    const { container } = render(<FlowDiagram flow={partial} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
     expect(container.querySelector('.flow-node.active')).toBeNull()
     expect(container.querySelectorAll('.flow-dot')).toHaveLength(0)
   })
 })
 
+describe('FlowDiagram robustness and details', () => {
+  it('counts stages, not frames, so next works when only some stages have a frame', async () => {
+    const onGo = vi.fn()
+    const partial = { ...flow, frames: [flow.frames[0]] }
+    render(<FlowDiagram flow={partial} total={3} index={1} onGo={onGo} onNode={() => {}} />)
+    expect(screen.getByText('2 / 3')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '次へ' }))
+    expect(onGo).toHaveBeenCalledWith(2)
+  })
+
+  it('shortens long edge labels (full text in the title) so they fit between columns', () => {
+    const long = { ...flow, edges: [{ ...flow.edges[0], label: 'とても長い矢印のラベルです' }] }
+    const { container } = render(<FlowDiagram flow={long} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
+    const text = container.querySelector('.flow-edge-label')!
+    expect(text.querySelector('title')!.textContent).toBe('とても長い矢印のラベルです')
+    const shown = [...text.childNodes].at(-1)!.textContent!
+    expect(shown.length).toBeLessThanOrEqual(8)
+    expect(shown.endsWith('…')).toBe(true)
+  })
+
+  it('moves focus back to the diagram when the clicked button becomes disabled', async () => {
+    const { rerender } = render(<FlowDiagram flow={flow} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
+    const next = screen.getByRole('button', { name: '次へ' })
+    await userEvent.click(next)
+    expect(screen.getByRole('group', { name: /手法の流れ図/ })).toHaveFocus()
+    rerender(<FlowDiagram flow={flow} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: '前へ' }))
+    expect(screen.getByRole('group', { name: /手法の流れ図/ })).toHaveFocus()
+  })
+
+  it('does not crash on an old or partial flow', async () => {
+    const onNode = vi.fn()
+    const broken = { nodes: [{ id: 'a', label: 'A', kind: 'input', shape: null }], edges: undefined, frames: undefined } as never
+    render(<FlowDiagram flow={broken} total={1} index={0} onGo={() => {}} onNode={onNode} />)
+    await userEvent.click(screen.getByRole('button', { name: /A/ }))
+    expect(onNode).toHaveBeenCalled()
+  })
+})
+
 describe('Step2Walkthrough with a flow', () => {
+  it('does not crash when a node has no evidence field', async () => {
+    const jump = renderStep2({
+      ...step2WithFlow,
+      flow: {
+        ...flow,
+        nodes: [{ id: 'in', label: '入力', kind: 'input', shape: null } as never, flow.nodes[1]],
+        frames: undefined as never,
+      },
+    })
+    await userEvent.click(screen.getByRole('button', { name: '入力（入力）' }))
+    expect(jump).not.toHaveBeenCalled()
+  })
+
   it('looks as before when flow is absent', () => {
     renderStep2(step2)
     expect(screen.queryByRole('group', { name: /手法の流れ図/ })).not.toBeInTheDocument()

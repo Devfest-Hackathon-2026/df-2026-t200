@@ -16,7 +16,7 @@ function jumpToStage(jump: JumpFn, stage: Stage | undefined, options?: JumpOptio
 }
 
 /** 流れ図のコマ（段階と1対1）の根拠。流れ図がなければ undefined */
-const frameEvidenceAt = (data: Step2, k: number) => data.flow?.frames.find((f) => f.stage_index === k)?.evidence
+const frameEvidenceAt = (data: Step2, k: number) => data.flow?.frames?.find((f) => f.stage_index === k)?.evidence
 
 export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: string }) {
   const [i, setI] = useState(0)
@@ -38,7 +38,7 @@ export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: str
     jumpToStage(jump, data.stages[k], undefined, frameEvidenceAt(data, k))
   }
   const jumpToNode = (n: FlowNode) => {
-    const ev = n.evidence[0]
+    const ev = n.evidence?.[0]
     if (ev) jump(ev.page, ev.quote)
   }
 
@@ -48,7 +48,7 @@ export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: str
       <section className="block">
         <h2>手法の流れ</h2>
         <p className="lead">{data.overview}</p>
-        {data.flow && <FlowDiagram flow={data.flow} index={i} onGo={goTo} onNode={jumpToNode} />}
+        {data.flow && <FlowDiagram flow={data.flow} total={data.stages.length} index={i} onGo={goTo} onNode={jumpToNode} />}
         <ol className="stepper">
           {data.stages.map((s, k) => (
             <li key={k}>

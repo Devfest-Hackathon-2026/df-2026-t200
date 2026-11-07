@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { Flow, FlowKind, FlowNode } from '../api'
 import { FLOW_NODE_H, FLOW_NODE_W, edgeKey, flowEdgePath, layoutFlow } from './flowLayout'
 
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)'
 const KIND_LABEL: Record<FlowKind, string> = { input: '入力', process: '処理', output: '出力' }
-const EDGE_LABEL_MAX = 14
+const EDGE_LABEL_MAX = 8
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => window.matchMedia?.(REDUCED_QUERY).matches ?? false)
@@ -27,20 +27,30 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
 export function FlowDiagram({
   flow,
   index,
+  total,
   onGo,
   onNode,
 }: {
   flow: Flow
   index: number
+  total: number
   onGo: (index: number) => void
   onNode: (node: FlowNode) => void
 }) {
   const reduced = useReducedMotion()
-  const layout = useMemo(() => layoutFlow(flow.nodes, flow.edges), [flow.nodes, flow.edges])
-  const frame = flow.frames.find((f) => f.stage_index === index)
-  const total = Math.max(index + 1, ...flow.frames.map((f) => f.stage_index + 1))
-  const activeNodes = new Set(frame?.active_nodes)
-  const activeEdges = new Set(frame?.active_edges)
+  const nodes = useMemo(() => flow.nodes ?? [], [flow.nodes])
+  const edges = useMemo(() => flow.edges ?? [], [flow.edges])
+  const layout = useMemo(() => layoutFlow(nodes, edges), [nodes, edges])
+  const frame = (flow.frames ?? []).find((f) => f.stage_index === index)
+  const activeNodes = new Set(frame?.active_nodes ?? [])
+  const activeEdges = new Set(frame?.active_edges ?? [])
+
+  const box = useRef<HTMLDivElement>(null)
+  // ボタンで端のコマに着いて押したボタンが無効になるとき、フォーカスが body に落ちないよう図へ戻す
+  const step = (k: number) => {
+    onGo(k)
+    if (k <= 0 || k >= total - 1) box.current?.focus()
+  }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'ArrowRight' && index < total - 1) {
@@ -53,7 +63,14 @@ export function FlowDiagram({
   }
 
   return (
-    <div className="flow" role="group" aria-label="手法の流れ図（← → キーで1コマずつ進めます）" tabIndex={0} onKeyDown={onKeyDown}>
+    <div
+      ref={box}
+      className="flow"
+      role="group"
+      aria-label="手法の流れ図（← → キーで1コマずつ進めます）"
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+    >
       <p className="flow-note small muted">AIが論文から作った図解です。根拠ページで確かめてください</p>
       <div className="flow-scroll">
         <div className="flow-canvas" style={{ width: layout.width, height: layout.height }}>
@@ -75,7 +92,7 @@ export function FlowDiagram({
                 </marker>
               ))}
             </defs>
-            {flow.edges.map((e) => {
+            {edges.map((e) => {
               const d = flowEdgePath(e, layout)
               if (!d) return null
               const active = activeEdges.has(edgeKey(e))
@@ -105,7 +122,7 @@ export function FlowDiagram({
             })}
           </svg>
           <ul className="flow-nodes" aria-label="流れ図のノード">
-            {flow.nodes.map((n) => {
+            {nodes.map((n) => {
               const p = layout.pos.get(n.id)
               if (!p) return null
               const active = activeNodes.has(n.id)
@@ -132,13 +149,13 @@ export function FlowDiagram({
         {frame?.caption}
       </p>
       <div className="row between flow-nav">
-        <button type="button" className="btn" disabled={index === 0} onClick={() => onGo(index - 1)}>
+        <button type="button" className="btn" disabled={index === 0} onClick={() => step(index - 1)}>
           前へ
         </button>
         <span className="muted small">
           {index + 1} / {total}
         </span>
-        <button type="button" className="btn primary" disabled={index >= total - 1} onClick={() => onGo(index + 1)}>
+        <button type="button" className="btn primary" disabled={index >= total - 1} onClick={() => step(index + 1)}>
           次へ
         </button>
       </div>
