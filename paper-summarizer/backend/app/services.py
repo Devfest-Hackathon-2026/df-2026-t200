@@ -15,6 +15,7 @@ from typing import Any, Protocol
 
 from . import config, errors, mock, store
 from .pdf_utils import extract_pages, normalize, verify_all
+from .quota import DailyQuota
 from .ratelimit import RateLimiter
 from .schemas import Paper
 
@@ -113,6 +114,10 @@ def retryable(paper: dict[str, Any]) -> bool:
     return (status == "queued" or status.startswith("processing_")) and is_stale(paper)
 
 
+class QuotaExceeded(Exception):
+    """サービス全体の1日の上限に達した。"""
+
+
 class AskFailed(Exception):
     def __init__(self, message: str):
         super().__init__(message)
@@ -135,6 +140,11 @@ class PaperService:
         self._starter = starter or self._start_thread
         self.ask_limiter = RateLimiter(config.ASK_RATE_PER_MIN, 60)
         self.retry_limiter = RateLimiter(config.RETRY_RATE_PER_MIN, 60)
+        # サービス全体の上限（論文を増やしても回避できない）
+        self.ask_global_limiter = RateLimiter(config.ASK_GLOBAL_PER_MIN, 60)
+        self.upload_quota = DailyQuota("uploads", config.MAX_UPLOADS_PER_DAY, directory=config.QUOTA_DIR)
+        self.analysis_quota = DailyQuota("analyses", config.MAX_ANALYSES_PER_DAY, directory=config.QUOTA_DIR)
+        self.ask_quota = DailyQuota("asks", config.MAX_ASKS_PER_DAY, directory=config.QUOTA_DIR)
 
     # ---------- 材料 ----------
 
@@ -152,13 +162,16 @@ class PaperService:
 
     # ---------- 作成 ----------
 
-    def create(self, *, data: bytes, pages: list[str], filename: str, level: str, sha256: str = "") -> tuple[str, bool]:
+    def create(self, *, data: bytes, pages: list[str], filename: str, level: str, sha256: str = "", owner: str | None = None) -> tuple[str, bool]:
         """論文の記録を作る。同じ PDF が解析済みなら解析結果（results）だけを写し、再解析しない。
 
         記録はアップロードごとに新しく作り、ほかの人の論文IDや会話履歴は返さない。
+        新しく解析する場合だけ、解析の1日の上限を使う。上限に達していれば何も保存せず QuotaExceeded。
         """
         existing_id = store.find_by_hash(sha256, level) if sha256 else None
         source = store.load(existing_id) if existing_id else None
+        if source is None and not self.analysis_quota.take():
+            raise QuotaExceeded
         paper_id = store.new_id()
         store.save_pdf(paper_id, data)
         store.save_pages(paper_id, pages, [normalize(p) for p in pages])
@@ -174,6 +187,7 @@ class PaperService:
                 "demo": source["demo"] if source else config.DEMO_MODE,
                 "results": dict(source["results"]) if source else {},
                 "messages": [],
+                "owner": owner,
                 "created_at": store.now(),
             }
         )
@@ -238,7 +252,15 @@ class PaperService:
                 log.warning("paper=%s disappeared during analysis", paper_id)
 
     def retry(self, paper_id: str) -> bool:
-        """状態の確認と queued への変更を1回の操作で行い、二度押しで解析が2本走らないようにする。"""
+        """状態の確認と queued への変更を1回の操作で行い、二度押しで解析が2本走らないようにする。
+
+        再解析も Gemini を呼ぶので、解析の1日の上限を使う。上限に達していれば状態を変えず QuotaExceeded。
+        """
+        paper = store.load(paper_id)
+        if paper is None or not retryable(paper):
+            return False
+        if not self.analysis_quota.take():
+            raise QuotaExceeded
         if store.transition(paper_id, retryable, status="queued", error=None) is None:
             return False
         self.start(paper_id)

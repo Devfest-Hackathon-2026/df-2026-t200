@@ -25,7 +25,7 @@ def sample_pdf() -> bytes:
 @pytest.fixture(autouse=True)
 def _clean_data_dir():
     """テストごとに保存済みの論文を消して独立させる。"""
-    for d in (config.UPLOAD_DIR, config.PAPER_DIR):
+    for d in (config.UPLOAD_DIR, config.PAPER_DIR, config.QUOTA_DIR):
         for f in d.glob("*"):
             f.unlink()
     yield

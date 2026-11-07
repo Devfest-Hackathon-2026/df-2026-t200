@@ -40,8 +40,11 @@ def client(service):
     main.app.dependency_overrides.clear()
 
 
+CLIENT = {"X-Client-Id": "test-client-0000000001"}
+
+
 def _upload(client, data, level="undergrad", name="paper.pdf"):
-    return client.post("/api/papers", files={"file": (name, data, "application/pdf")}, data={"level": level})
+    return client.post("/api/papers", files={"file": (name, data, "application/pdf")}, data={"level": level}, headers=CLIENT)
 
 
 def _wait_done(client, pid, timeout=10.0):
@@ -99,14 +102,14 @@ def test_same_pdf_reuses_results_in_a_new_record(client, sample_pdf):
 def test_list_papers_includes_uploaded(client, sample_pdf):
     pid = _upload(client, sample_pdf).json()["id"]
     _wait_done(client, pid)
-    assert [p["id"] for p in client.get("/api/papers").json()] == [pid]
+    assert [p["id"] for p in client.get("/api/papers", headers=CLIENT).json()] == [pid]
 
 
 def test_list_papers_shows_the_level(client, sample_pdf):
     # アップロード画面の「これまでの論文」に、どのレベルで解析したかを出す
     pid = _upload(client, sample_pdf, level="grad").json()["id"]
     _wait_done(client, pid)
-    assert client.get("/api/papers").json()[0]["level"] == "grad"
+    assert client.get("/api/papers", headers=CLIENT).json()[0]["level"] == "grad"
 
 
 def test_get_pdf_returns_file(client, sample_pdf):
@@ -260,7 +263,7 @@ def test_generic_error_does_not_leak_details(client, sample_pdf, monkeypatch):
 
 
 def test_store_is_isolated_per_test():
-    assert store.list_papers() == []
+    assert list(config.PAPER_DIR.glob("*.json")) == []
 
 
 def _stuck_paper(pdf, status, updated_at=None):

@@ -4,8 +4,10 @@ papers/{id}.json に1論文分の状態・結果・会話履歴をまとめて�
 uploads/{id}.pdf に PDF 本体、uploads/{id}.pages.json に抽出・正規化済みのページを置く。
 """
 
+import hashlib
 import json
 import logging
+import re
 import threading
 import uuid
 from collections.abc import Callable, Iterator
@@ -154,7 +156,20 @@ def _iter_papers() -> Iterator[dict[str, Any]]:
         yield p
 
 
-def list_papers() -> list[dict[str, Any]]:
+_CLIENT_ID = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+
+
+def owner_of(client_id: str | None) -> str | None:
+    """ブラウザが送る X-Client-Id から持ち主の値を作る。ID そのものは保存しない。形が不正なら None。"""
+    if not client_id or not _CLIENT_ID.match(client_id):
+        return None
+    return hashlib.sha256(client_id.encode()).hexdigest()[:32]
+
+
+def list_papers(owner: str | None) -> list[dict[str, Any]]:
+    """そのブラウザでアップロードした論文だけを返す（ほかの人の論文IDを知られないようにする）。"""
+    if owner is None:
+        return []
     items = [
         {
             "id": p["id"],
@@ -165,6 +180,7 @@ def list_papers() -> list[dict[str, Any]]:
             "created_at": p["created_at"],
         }
         for p in _iter_papers()
+        if p.get("owner") == owner
     ]
     return sorted(items, key=lambda x: x["created_at"], reverse=True)
 
