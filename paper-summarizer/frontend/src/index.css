@@ -407,6 +407,11 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   gap: 4px 6px;
   vertical-align: middle;
 }
+/* 前提知識の詳細で、根拠のチップの下に別の行として置く */
+.chips.concept-uses {
+  display: flex;
+  margin-top: 8px;
+}
 .chips-label {
   font-size: 0.8125rem;
   font-weight: 700;
