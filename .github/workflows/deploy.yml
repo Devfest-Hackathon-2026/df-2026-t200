@@ -1,0 +1,62 @@
+name: Deploy
+
+# main への push で CI が成功したら、Cloud Run と Firebase Hosting にデプロイする（CD）。
+# GCP へは鍵ファイルを使わず、Workload Identity 連携で入る。設定は paper-summarizer/deploy.sh の cd-setup で作る。
+# GCP 側の条件で、このリポジトリの main ブランチから動いたワークフローしかデプロイ用アカウントになれない。
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# デプロイを重ねて走らせない（後のものは前のものが終わるまで待つ）
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: devfeshack
+  WIF_PROVIDER: projects/126669840987/locations/global/workloadIdentityPools/github/providers/github
+  DEPLOY_SA: github-deployer@devfeshack.iam.gserviceaccount.com
+  NODE_VERSION: "22"
+
+jobs:
+  deploy:
+    name: deploy (Cloud Run + Firebase Hosting)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: paper-summarizer
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # CI が通ったコミットそのものをデプロイする
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v3.0.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: paper-summarizer/frontend/package-lock.json
+      - name: Deploy API (Cloud Run)
+        # 「誰でも呼べる」設定は変えない（デプロイ用アカウントにその権限を渡していない）
+        run: SKIP_INVOKER_IAM=1 ./deploy.sh api
+      - name: Deploy web (Firebase Hosting)
+        run: ./deploy.sh web
+      - name: Smoke test
+        run: |
+          curl -fsS "https://${PROJECT_ID}.web.app/api/health" | tee /dev/stderr | grep -q '"backend":"vertex"'
+          curl -fsSI "https://${PROJECT_ID}.web.app/" | grep -qi '^cache-control: no-cache'
