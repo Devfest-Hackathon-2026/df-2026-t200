@@ -55,6 +55,27 @@ PROJECT_ID=<プロジェクト ID> MIN_INSTANCES=1 ./deploy.sh api
 
 `all`は、Cloud Buildでイメージを作ってCloud Runにデプロイし、続けてフロントエンドをビルドしてFirebase Hostingに載せる。終わったら`https://<プロジェクト ID>.web.app`を開く。`/api/health`の`backend`が`vertex`になっていれば、GeminiをVertex AI経由で呼べている。
 
+## 4. mainへのマージで自動デプロイする（CD）
+
+`.github/workflows/deploy.yml`は、mainへのpushでCIが通ったら、`deploy.sh api`と`deploy.sh web`を実行し、公開URLの`/api/health`を確かめる。Actionsの画面から手動でも実行できる。
+
+GitHub ActionsからGCPへは鍵ファイルを使わず、Workload Identity連携で入る。GCP側の条件で、`YukiUSAMI/DevFesHack`のmainブランチから動いたワークフローしかデプロイ用アカウントになれない。初回だけ、オーナーが次を実行する。IAMの権限を付ける操作なので、人が内容を確かめて実行する。
+
+```bash
+PROJECT_ID=<プロジェクト ID> ./deploy.sh cd-setup
+```
+
+デプロイ用アカウント`github-deployer`に付けるのは、ソースからのデプロイ（`roles/run.sourceDeveloper`）、Firebase Hostingへの公開（`roles/firebasehosting.admin`）、実行用とビルド用のサービスアカウントとして動く権限である。Cloud Runの「誰でも呼べる」設定を変える権限は付けないので、CIからのデプロイではこの設定に触れない（`SKIP_INVOKER_IAM=1`）。GCP側の条件で、このリポジトリのmainブランチの`deploy.yml`から動いたジョブしか、このアカウントになれない。
+
+ただし、次の2点で、実際の権限は上の一覧より広い。
+
+- ビルド用のCompute Engineの既定アカウントには、Googleが自動で付ける「編集者」（`roles/editor`）が付いている。デプロイ用アカウントはこのアカウントとして動けるので、実質的にプロジェクトの編集者に近い。既定アカウントから「編集者」を外し、ビルドに要る`roles/run.builder`だけにすると狭くなる（ほかの用途で使っていないかをオーナーが確かめてから行う）
+- `roles/run.sourceDeveloper`はプロジェクト全体のオブジェクトの読み書きを含むので、データのバケット（PDFと解析結果）も読み書きできる
+
+入口はmainへのpushなので、mainにpushできる人はデプロイ用アカウントを使えることになる。リポジトリの管理者が、mainへの直接のpushを禁止し、PRでのマージだけにする（ブランチ保護）ことを勧める。
+
+ワークフローは、認証より前にフロントエンドをビルドし（依存パッケージのスクリプトに認証情報を見せない）、mainの最新のコミットでなければデプロイしない（古いコミットのCIを再実行したときに古い版を出さない）。使うActionsはコミットSHAで固定している。別のプロジェクトで使うときは、ワークフローの`PROJECT_ID`・`WIF_PROVIDER`・`DEPLOY_SA`を`cd-setup`の出力に合わせて書き換える。
+
 ## Cloud Runの設定とその理由
 
 | 設定 | 値 | 理由 |

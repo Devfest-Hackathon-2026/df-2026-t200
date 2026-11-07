@@ -5,6 +5,7 @@
 #   PROJECT_ID=my-project-123 ./deploy.sh api     # バックエンドを Cloud Run にデプロイ
 #   PROJECT_ID=my-project-123 ./deploy.sh web     # フロントエンドを Firebase Hosting にデプロイ
 #   PROJECT_ID=my-project-123 ./deploy.sh all     # api と web を続けて実行
+#   PROJECT_ID=my-project-123 ./deploy.sh cd-setup  # 初回だけ: GitHub Actions からのデプロイ（CD）の設定
 #   MIN_INSTANCES=1 を付けると待機インスタンスを 1 台にする（審査の期間用。起きている間は費用がかかる）
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -73,7 +74,64 @@ setup() {
     || echo "（失敗しました。追加済みなら問題ありません。未追加なら firebase login 済みかを確かめるか、Firebase コンソールで追加してください）"
 }
 
+cd_setup() {
+  # GitHub Actions から鍵ファイルなしでデプロイするための設定（Workload Identity 連携）。初回だけ実行する。
+  # main ブランチの、このリポジトリのワークフローだけが、デプロイ用サービスアカウントになれる。
+  local repo="${GITHUB_REPO:-YukiUSAMI/DevFesHack}"
+  local deployer="github-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+  local number
+  number="$(gc projects describe "$PROJECT_ID" --format 'value(projectNumber)')"
+
+  echo "== API を有効にする"
+  gc services enable iamcredentials.googleapis.com sts.googleapis.com
+
+  echo "== デプロイ用サービスアカウント ${deployer}"
+  if ! gc iam service-accounts describe "$deployer" >/dev/null 2>&1; then
+    gc iam service-accounts create github-deployer --display-name "GitHub Actions deployer"
+  fi
+  # ソースからのデプロイ（Cloud Build と Cloud Run の更新）と、Firebase Hosting へのデプロイだけを許す。
+  # 「誰でも呼べる」設定の変更権限は渡さない（CI からは SKIP_INVOKER_IAM=1 で触れない）
+  local role
+  for role in roles/run.sourceDeveloper roles/firebasehosting.admin; do
+    retry gc projects add-iam-policy-binding "$PROJECT_ID" \
+      --member "serviceAccount:${deployer}" --role "$role" --condition None --format none
+  done
+  # 実行用（Cloud Run）とビルド用（Cloud Build）のサービスアカウントとして動く権限
+  local sa
+  for sa in "$SA_EMAIL" "${number}-compute@developer.gserviceaccount.com"; do
+    retry gc iam service-accounts add-iam-policy-binding "$sa" \
+      --member "serviceAccount:${deployer}" --role roles/iam.serviceAccountUser --format none
+  done
+
+  echo "== Workload Identity プール github とプロバイダ github"
+  if ! gc iam workload-identity-pools describe github --location global >/dev/null 2>&1; then
+    gc iam workload-identity-pools create github --location global --display-name "GitHub Actions"
+  fi
+  # main ブランチの deploy.yml から動いたジョブだけを受け付ける（ほかのワークフローやブランチは認証で弾く）
+  local condition="assertion.repository == '${repo}' && assertion.ref == 'refs/heads/main' && assertion.job_workflow_ref == '${repo}/.github/workflows/deploy.yml@refs/heads/main'"
+  local provider_args=(--location global --workload-identity-pool github
+    --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref"
+    --attribute-condition "$condition")
+  if gc iam workload-identity-pools providers describe github --location global --workload-identity-pool github >/dev/null 2>&1; then
+    gc iam workload-identity-pools providers update-oidc github "${provider_args[@]}"
+  else
+    gc iam workload-identity-pools providers create-oidc github "${provider_args[@]}" \
+      --issuer-uri https://token.actions.githubusercontent.com
+  fi
+  retry gc iam service-accounts add-iam-policy-binding "$deployer" --role roles/iam.workloadIdentityUser \
+    --member "principalSet://iam.googleapis.com/projects/${number}/locations/global/workloadIdentityPools/github/attribute.repository/${repo}" \
+    --format none
+
+  echo ""
+  echo "  ワークフローに書く値:"
+  echo "    WIF_PROVIDER: projects/${number}/locations/global/workloadIdentityPools/github/providers/github"
+  echo "    DEPLOY_SA:    ${deployer}"
+}
+
 deploy_api() {
+  # 「誰でも呼べる」設定は setup 後の初回デプロイで付ける。CI（SKIP_INVOKER_IAM=1）からは変えない
+  local INVOKER_FLAG=(--allow-unauthenticated)
+  [ "${SKIP_INVOKER_IAM:-0}" = "1" ] && INVOKER_FLAG=()
   echo "== Cloud Run にデプロイ（Cloud Build でイメージを作る）"
   # 保存先はファイル（JSON）なので、同時に書き込まないようインスタンスは 1 台に固定する。
   # 解析は応答を返した後もバックグラウンドで続くため、CPU を常に割り当てる（--no-cpu-throttling）。
@@ -84,7 +142,7 @@ deploy_api() {
     --source backend \
     --region "$REGION" \
     --service-account "$SA_EMAIL" \
-    --allow-unauthenticated \
+    ${INVOKER_FLAG[@]+"${INVOKER_FLAG[@]}"} \
     --execution-environment gen2 \
     --min-instances "${MIN_INSTANCES:-0}" --max-instances 1 \
     --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 --concurrency 20 \
@@ -97,7 +155,10 @@ deploy_api() {
 
 deploy_web() {
   echo "== フロントエンドをビルドして Firebase Hosting にデプロイ"
-  (cd frontend && npm ci && npm run build)
+  # CI では認証より前にビルドを済ませる（SKIP_WEB_BUILD=1）。依存パッケージのスクリプトに認証情報を見せないため
+  if [ "${SKIP_WEB_BUILD:-0}" != "1" ]; then
+    (cd frontend && npm ci && npm run build)
+  fi
   $FIREBASE deploy --only hosting --project "$PROJECT_ID" --non-interactive
   echo ""
   echo "  ▶ https://${PROJECT_ID}.web.app を開いてください"
@@ -106,8 +167,9 @@ deploy_web() {
 
 case "${1:-}" in
   setup) setup ;;
+  cd-setup) cd_setup ;;
   api) deploy_api ;;
   web) deploy_web ;;
   all) deploy_api && deploy_web ;;
-  *) echo "使い方: PROJECT_ID=... $0 {setup|api|web|all}" >&2; exit 2 ;;
+  *) echo "使い方: PROJECT_ID=... $0 {setup|cd-setup|api|web|all}" >&2; exit 2 ;;
 esac
