@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Stage, Step2 } from '../api'
-import { EvidenceList, PageChip, useJump, type JumpFn, type JumpOptions } from '../jump'
+import { EvidenceList, PageChip } from '../jump'
+import { useJump, type JumpFn, type JumpOptions } from '../jumpContext'
 import { Tex } from './Tex'
 
 /** 段階の根拠（なければ最初の図表のページ）へ PDF を移動して強調する。どちらもなければ何もしない */
