@@ -5,6 +5,7 @@
 #   PROJECT_ID=my-project-123 ./deploy.sh api     # バックエンドを Cloud Run にデプロイ
 #   PROJECT_ID=my-project-123 ./deploy.sh web     # フロントエンドを Firebase Hosting にデプロイ
 #   PROJECT_ID=my-project-123 ./deploy.sh all     # api と web を続けて実行
+#   MIN_INSTANCES=1 を付けると待機インスタンスを 1 台にする（審査の期間用。起きている間は費用がかかる）
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -20,11 +21,23 @@ FIREBASE="npx --yes firebase-tools@15.34.1"
 
 gc() { gcloud --project "$PROJECT_ID" "$@"; }
 
+# 作ったばかりのサービスアカウントは、権限の付与先として使えるまで数十秒かかることがある
+retry() {
+  local i
+  for i in 1 2 3 4 5 6; do
+    "$@" && return 0
+    echo "（反映を待って再試行します: ${i}/6）" >&2
+    sleep 10
+  done
+  return 1
+}
+
 setup() {
   echo "== API を有効にする"
   gc services enable \
     run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
     aiplatform.googleapis.com storage.googleapis.com iam.googleapis.com \
+    compute.googleapis.com \
     firebase.googleapis.com firebasehosting.googleapis.com
 
   echo "== PDF と解析結果を置くバケット gs://${BUCKET}"
@@ -38,35 +51,41 @@ setup() {
     gc iam service-accounts create "$SA_NAME" --display-name "PaperSummarizer Cloud Run"
   fi
   # Vertex AI で Gemini を呼ぶ権限と、バケットの読み書きの権限だけを渡す
-  gc projects add-iam-policy-binding "$PROJECT_ID" \
-    --member "serviceAccount:${SA_EMAIL}" --role roles/aiplatform.user --condition None >/dev/null
-  gc storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-    --member "serviceAccount:${SA_EMAIL}" --role roles/storage.objectUser >/dev/null
+  retry gc projects add-iam-policy-binding "$PROJECT_ID" \
+    --member "serviceAccount:${SA_EMAIL}" --role roles/aiplatform.user --condition None --format none
+  retry gc storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+    --member "serviceAccount:${SA_EMAIL}" --role roles/storage.objectUser --format none
 
   echo "== ソースからのビルドに使うサービスアカウントにビルドの権限を渡す"
+  # Compute Engine API を有効にすると作られる既定のサービスアカウントを、Cloud Build が使う
   local number
   number="$(gc projects describe "$PROJECT_ID" --format 'value(projectNumber)')"
-  gc projects add-iam-policy-binding "$PROJECT_ID" \
+  retry gc projects add-iam-policy-binding "$PROJECT_ID" \
     --member "serviceAccount:${number}-compute@developer.gserviceaccount.com" \
-    --role roles/run.builder --condition None >/dev/null
+    --role roles/run.builder --condition None --format none
 
   echo "== プロジェクトを Firebase に追加する（追加済みならそのまま）"
-  $FIREBASE projects:addfirebase "$PROJECT_ID" || echo "（追加済みか、Firebase コンソールで追加してください）"
+  $FIREBASE projects:addfirebase "$PROJECT_ID" \
+    || echo "（失敗しました。追加済みなら問題ありません。未追加なら firebase login 済みかを確かめるか、Firebase コンソールで追加してください）"
 }
 
 deploy_api() {
   echo "== Cloud Run にデプロイ（Cloud Build でイメージを作る）"
   # 保存先はファイル（JSON）なので、同時に書き込まないようインスタンスは 1 台に固定する。
   # 解析は応答を返した後もバックグラウンドで続くため、CPU を常に割り当てる（--no-cpu-throttling）。
+  # 待機インスタンス 0 台だと、アクセスのない間に解析の途中でもインスタンスが止まりうる。
+  # 審査の期間は MIN_INSTANCES=1 でデプロイし、常に 1 台起こしておく（その間は費用がかかり続ける）。
+  # ボリュームは毎回付け直し、再デプロイで同じ名前が重ならないようにする。
   gc run deploy "$SERVICE" \
     --source backend \
     --region "$REGION" \
     --service-account "$SA_EMAIL" \
     --allow-unauthenticated \
     --execution-environment gen2 \
-    --min-instances 0 --max-instances 1 \
+    --min-instances "${MIN_INSTANCES:-0}" --max-instances 1 \
     --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 \
     --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,DATA_DIR=/data" \
+    --clear-volumes --clear-volume-mounts \
     --add-volume "name=data,type=cloud-storage,bucket=${BUCKET}" \
     --add-volume-mount "volume=data,mount-path=/data" \
     --quiet

@@ -42,6 +42,8 @@ npx --yes firebase-tools@15.34.1 login
 ```bash
 PROJECT_ID=<プロジェクト ID> ./deploy.sh setup   # 初回だけ
 PROJECT_ID=<プロジェクト ID> ./deploy.sh all
+# 審査の期間（提出から Regional Day、Demo Day の前後）は待機インスタンスを 1 台にする
+PROJECT_ID=<プロジェクト ID> MIN_INSTANCES=1 ./deploy.sh api
 ```
 
 `setup`では次のことを行う。
@@ -58,7 +60,7 @@ PROJECT_ID=<プロジェクト ID> ./deploy.sh all
 | 設定 | 値 | 理由 |
 | --- | --- | --- |
 | リージョン | asia-northeast1 | 利用者が日本にいる。Gemini は `GOOGLE_CLOUD_LOCATION=global` で呼ぶ |
-| インスタンス数 | 0〜1 台 | 保存先がファイルなので同時に書き込ませない。使われていない間は 0 台になる |
+| インスタンス数 | 0〜1 台（審査期間は 1 台） | 保存先がファイルなので同時に書き込ませない。待機 0 台だとアクセスのない間に止まり、解析の途中でも止まることがある（10分後に再実行できる） |
 | CPU の割り当て | 常に割り当てる（`--no-cpu-throttling`） | 解析は応答を返した後もバックグラウンドで続くため |
 | リクエストのタイムアウト | 300 秒 | Q&A は毎回 PDF 全体を Gemini に送るため長めにする。ただし Firebase Hosting を通すと 60 秒で打ち切られるので、実際の上限は 60 秒になる |
 | 未認証の呼び出し | 許可 | Firebase Hosting から転送して呼ぶため。審査員はログインなしで使える |
