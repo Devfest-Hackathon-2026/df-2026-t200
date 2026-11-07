@@ -15,6 +15,8 @@ import {
   type ConceptLevel,
 } from './conceptLayout'
 import { equationsUsing } from './equationLinks'
+import { forget, isMemory, KNOWN_CONCEPTS_KEY, rememberedIds, rememberKnown, type NameRecord } from './knownConcepts'
+import { learningPath } from './learningPath'
 
 /** App.tsx の NARROW_QUERY と同じ幅。狭い画面では概念を上から下へ並べ、横にはみ出さないようにする */
 const NARROW_QUERY = '(max-width: 900px)'
@@ -59,6 +61,9 @@ type Step1MapProps = {
 
 export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1MapProps) {
   const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
+  // 論文をまたいで覚える「知っている」概念の名前（照合キー）。論文ごとの knowledge とは別に持つ
+  const [memory, setMemory] = useLocalStorageState<NameRecord[]>(KNOWN_CONCEPTS_KEY, [], isMemory)
+  const [autoCount, setAutoCount] = useState(0)
   const [savedLevel, setLevel] = useLocalStorageState<ConceptLevel>(`conceptLevel:${paperId}`, 'all', isConceptLevel)
   // 式から隠れた概念へ移ったときの一時的な「すべて」。保存せず、学生が自分で切り替えたら外す
   const [override, setOverride] = useState<ConceptLevel | null>(null)
@@ -71,6 +76,15 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
     setOverride(filterConcepts(data.concepts, level).some((c) => c.id === focus.id) ? null : 'all')
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 移動の指示（focus）が変わったときだけ動かす
   }, [focus])
+  // 覚えている名前と同じ概念で、この論文でまだ仕分けていないものを「知っている」にする。
+  // この論文で明示的に付けた印（knowledge にある id）は上書きしない。論文を開いたときの 1 回だけ行う
+  useEffect(() => {
+    const ids = rememberedIds(data.concepts, memory).filter((id) => !knowledge[id])
+    if (ids.length === 0) return
+    setKnowledge((k) => ({ ...Object.fromEntries(ids.filter((id) => !k[id]).map((id) => [id, 'known' as const])), ...k }))
+    setAutoCount(ids.length)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 論文（概念の一覧）が変わったときだけ動かす。仕分けのたびには動かさない
+  }, [paperId, data.concepts])
   // 表示範囲に入る概念だけを図にする。隠した概念への依存は、レイアウトと矢印が無視する
   const concepts = useMemo(() => filterConcepts(data.concepts, level), [data.concepts, level])
   const narrow = useNarrow()
@@ -88,7 +102,19 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
   const usedBy = useMemo(() => (selId && onOpenEquation ? equationsUsing(step2, selId) : []), [step2, selId, onOpenEquation])
   const isActive = (e: { from: string; to: string }) => selId === e.from || selId === e.to
   const unknown = concepts.filter((c) => knowledge[c.id] === 'unknown')
-  const set = (id: string, v: 'known' | 'unknown') => setKnowledge((k) => ({ ...k, [id]: v }))
+  // 学ぶ順番は表示範囲内の「知らない」だけを載せる（地図で選べる概念と、下の一覧に合わせる）。
+  // 順序そのものは全概念の依存で決めるので、表示範囲を変えても前後関係は変わらない
+  const path = useMemo(() => learningPath(data.concepts, new Set(unknown.map((c) => c.id))), [data.concepts, unknown])
+  const byId = useMemo(() => new Map(data.concepts.map((c) => [c.id, c])), [data.concepts])
+  const set = (id: string, v: 'known' | 'unknown') => {
+    setKnowledge((k) => ({ ...k, [id]: v }))
+    const name = byId.get(id)?.name
+    // 「知らない」にしたら覚えから外す（前の論文での「知っている」を持ち越さない）
+    if (name) setMemory((m) => (v === 'known' ? rememberKnown(m, name) : forget(m, name)))
+  }
+  const clearMemory = () => {
+    if (window.confirm('覚えている「知っている」概念をすべて消します。この論文で付けた印はそのままです。よろしいですか？')) setMemory([])
+  }
 
   return (
     <div className="step">
@@ -260,12 +286,37 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
           </div>
         )}
 
+        {/* 読み上げが拾えるよう、容器は常に置き、中身だけ差し替える */}
+        <p className="muted small auto-known-note" role="status">
+          {autoCount > 0 && `前の論文で知っているとした概念を仕分け済みにしました（${autoCount}件）`}
+        </p>
+        {memory.length > 0 && (
+          <p className="small">
+            <button type="button" className="btn small" onClick={clearMemory}>
+              覚えた「知っている」を消す
+            </button>
+          </p>
+        )}
+
         {unknown.length > 0 && (
           <div className="unknown-list">
             <h3>
               <span className="magnet yellow" aria-hidden="true" />
               先に押さえておく概念（{unknown.length}）
             </h3>
+            {path.cyclic ? (
+              <p className="muted small">概念の依存関係に循環があるため、学ぶ順番は出せません。下の一覧を順に見てください。</p>
+            ) : (
+              <ol className="learning-path" aria-label="学ぶ順番">
+                {path.order.map((id) => (
+                  <li key={id}>
+                    <button type="button" className="chip page" onClick={() => setSelected(id)}>
+                      {byId.get(id)?.name}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
             {unknown.map((c) => (
               <details key={c.id}>
                 <summary>{c.name}</summary>
