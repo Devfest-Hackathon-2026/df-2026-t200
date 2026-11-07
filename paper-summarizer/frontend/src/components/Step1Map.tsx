@@ -15,7 +15,7 @@ import {
   type ConceptLevel,
 } from './conceptLayout'
 import { equationsUsing } from './equationLinks'
-import { forget, isKeyList, KNOWN_CONCEPTS_KEY, rememberedIds, rememberKnown } from './knownConcepts'
+import { forget, isMemory, KNOWN_CONCEPTS_KEY, rememberedIds, rememberKnown, type NameRecord } from './knownConcepts'
 import { learningPath } from './learningPath'
 
 /** App.tsx の NARROW_QUERY と同じ幅。狭い画面では概念を上から下へ並べ、横にはみ出さないようにする */
@@ -62,7 +62,7 @@ type Step1MapProps = {
 export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1MapProps) {
   const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
   // 論文をまたいで覚える「知っている」概念の名前（照合キー）。論文ごとの knowledge とは別に持つ
-  const [memory, setMemory] = useLocalStorageState<string[]>(KNOWN_CONCEPTS_KEY, [], isKeyList)
+  const [memory, setMemory] = useLocalStorageState<NameRecord[]>(KNOWN_CONCEPTS_KEY, [], isMemory)
   const [autoCount, setAutoCount] = useState(0)
   const [savedLevel, setLevel] = useLocalStorageState<ConceptLevel>(`conceptLevel:${paperId}`, 'all', isConceptLevel)
   // 式から隠れた概念へ移ったときの一時的な「すべて」。保存せず、学生が自分で切り替えたら外す
@@ -286,11 +286,10 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
           </div>
         )}
 
-        {autoCount > 0 && (
-          <p className="muted small auto-known-note" role="status">
-            前の論文で知っているとした概念を仕分け済みにしました（{autoCount}件）
-          </p>
-        )}
+        {/* 読み上げが拾えるよう、容器は常に置き、中身だけ差し替える */}
+        <p className="muted small auto-known-note" role="status">
+          {autoCount > 0 && `前の論文で知っているとした概念を仕分け済みにしました（${autoCount}件）`}
+        </p>
         {memory.length > 0 && (
           <p className="small">
             <button type="button" className="btn small" onClick={clearMemory}>
