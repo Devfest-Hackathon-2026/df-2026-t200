@@ -27,9 +27,9 @@ CC BY 4.0は、著作者・題名・出典・ライセンスを表示すれば�
 | fastapi | 0.162.0 | MIT |
 | uvicorn | 0.54.0 | BSD-3-Clause |
 | google-genai | 2.34.0 | Apache-2.0 |
-| pymupdf | 2.1 | AGPL-3.0（Artifexの商用ライセンスとのデュアルライセンス） |
 | python-multipart | 0.0.33 | Apache-2.0 |
 | python-dotenv | 1.2.4 | BSD-3-Clause |
+| pypdfium2 | 5.15.1 | Apache-2.0 または BSD-3-Clause（同梱のPDFiumと、その依存ライブラリのライセンスはwheelの `licenses/` に入っている） |
 
 開発とテストだけで使うもの（本番のイメージには入らない）。
 
@@ -40,7 +40,7 @@ CC BY 4.0は、著作者・題名・出典・ライセンスを表示すれば�
 | pytest-cov | 7.1.0 | MIT |
 | ruff | 0.17.3 | MIT |
 
-PyMuPDFはAGPL-3.0なので、ネットワーク越しに使わせる場合は、利用者にソースコードを提供する条件がある。対応はまだ決めていない（`docs/spec.md` の未決事項）。
+引用の照合に使っていたPyMuPDF（AGPL-3.0）は、2026-11-08にpypdfium2へ置き換えた。BERTの論文でGeminiが出した18件の引用は、置き換えの前後でどれも同じページで照合できた。
 
 ## ライブラリ（フロントエンド、JavaScript）
 
