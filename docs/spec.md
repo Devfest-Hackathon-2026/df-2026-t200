@@ -123,7 +123,9 @@ mainへのマージでCIが通ると、GitHub ActionsがCloud RunとFirebase Hos
 | バックグラウンドスレッド（同時実行2） | Cloud Tasks + Cloud Runのワーカー | #8 |
 | フロントのポーリング | Firestoreのリアルタイムリスナー | #9 |
 
-提出用のGoogle Cloudアーキテクチャ図（#23）は、公式アイコンを使って別に作る。
+提出用のGoogle Cloudアーキテクチャ図（#23）は、公式アイコンを使って作った（[PNG](architecture.png)、[SVG](architecture.svg)）。図は今の本番構成を描いており、上の置き換えが済んだら描き直す。
+
+![PaperSummarizer for Students の本番構成](architecture.png)
 
 ## AIの誤りへの対策と安全性
 
