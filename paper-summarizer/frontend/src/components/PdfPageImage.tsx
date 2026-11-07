@@ -18,9 +18,12 @@ export default function PdfPageImage({ url, page, label }: { url: string; page: 
       (p) => {
         if (!run.alive) return
         const base = p.getViewport({ scale: 1 })
-        const vp = p.getViewport({ scale: WIDTH / base.width })
+        // 画面の解像度に合わせて細かく描き、表示の大きさは CSS の px で決める
+        const dpr = window.devicePixelRatio || 1
+        const vp = p.getViewport({ scale: (WIDTH / base.width) * dpr })
         canvas.width = Math.floor(vp.width)
         canvas.height = Math.floor(vp.height)
+        canvas.style.width = `${WIDTH}px`
         const ctx = canvas.getContext('2d')
         if (!ctx) return setFailed(true)
         task = p.render({ canvasContext: ctx, canvas, viewport: vp })
