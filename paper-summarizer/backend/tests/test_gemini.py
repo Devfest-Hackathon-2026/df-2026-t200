@@ -151,3 +151,34 @@ def test_generate_uses_given_client_instead_of_creating_one(monkeypatch):
     monkeypatch.setattr(gemini, "client", lambda: pytest.fail("渡されたクライアントを使うこと"))
     gemini.ask(b"%PDF", "undergrad", "q", [], None, cli=SimpleNamespace(models=models))
     assert len(models.calls) == 1
+
+
+def test_system_prompt_follows_output_language(fake):
+    models = fake(mock.step1(PAGES, "a.pdf"))
+    gemini.step1(b"%PDF", "grad")
+    gemini.step1(b"%PDF", "grad", lang="en")
+    gemini.step1(b"%PDF", "grad", lang="xx")  # 未知の値は日本語
+    ja, en, unknown = (c["config"].system_instruction for c in models.calls)
+    assert "出力は日本語" in ja and "出力は英語" in en
+    assert "出力は日本語" in unknown
+    assert "原文のまま" in en
+
+
+@pytest.mark.parametrize("name", ["step2", "step3", "ask"])
+def test_every_call_passes_language_to_system_prompt(fake, name):
+    s1 = mock.step1(PAGES, "a.pdf")
+    payload = {"step2": mock.step2(PAGES), "step3": mock.step3(PAGES), "ask": mock.ask(PAGES, "q")}[name]
+    models = fake(payload)
+    if name == "ask":
+        gemini.ask(b"%PDF", "undergrad", "q", [], None, lang="en")
+    else:
+        getattr(gemini, name)(b"%PDF", "undergrad", s1, lang="en")
+    assert "出力は英語" in models.calls[0]["config"].system_instruction
+
+
+def test_fence_tags_stay_random_per_call(fake):
+    models = fake(mock.ask(PAGES, "q"))
+    gemini.ask(b"%PDF", "undergrad", "q", [], None, lang="en")
+    gemini.ask(b"%PDF", "undergrad", "q", [], None, lang="en")
+    tags = [re.search(r"<(question_[0-9a-f]{16})>", c["contents"][1]).group(1) for c in models.calls]
+    assert tags[0] != tags[1]

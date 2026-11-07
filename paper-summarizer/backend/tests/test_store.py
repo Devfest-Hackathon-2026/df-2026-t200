@@ -176,3 +176,13 @@ def test_get_pdf_bytes_and_local_pdf_url():
     store.save_pdf(pid, b"%PDF-data")
     assert store.get_pdf_bytes(pid) == b"%PDF-data"
     assert store.pdf_url(pid) is None  # ローカルでは API から直接返す
+
+
+def test_find_by_hash_matches_lang_and_treats_missing_lang_as_ja():
+    old = store.new_id()
+    store.save(_paper(old, sha256="h2", level="grad", status="done"))  # lang の無い古い記録
+    en = store.new_id()
+    store.save(_paper(en, sha256="h2", level="grad", lang="en", status="done"))
+    assert store.find_by_hash("h2", "grad", "ja") == old
+    assert store.find_by_hash("h2", "grad", "en") == en
+    assert store.find_by_hash("h2", "grad") == old

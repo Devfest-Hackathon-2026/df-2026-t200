@@ -77,16 +77,16 @@ class GeminiAnalyzer:
             return self._client
 
     def step1(self, src: PaperSource) -> dict[str, Any]:
-        return self._gemini().step1(src.pdf_bytes, src.paper.level, cli=self._cli())
+        return self._gemini().step1(src.pdf_bytes, src.paper.level, lang=src.paper.lang, cli=self._cli())
 
     def step2(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
-        return self._gemini().step2(src.pdf_bytes, src.paper.level, s1, cli=self._cli())
+        return self._gemini().step2(src.pdf_bytes, src.paper.level, s1, lang=src.paper.lang, cli=self._cli())
 
     def step3(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
-        return self._gemini().step3(src.pdf_bytes, src.paper.level, s1, cli=self._cli())
+        return self._gemini().step3(src.pdf_bytes, src.paper.level, s1, lang=src.paper.lang, cli=self._cli())
 
     def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]:
-        return self._gemini().ask(src.pdf_bytes, src.paper.level, question, history, current_step, cli=self._cli())
+        return self._gemini().ask(src.pdf_bytes, src.paper.level, question, history, current_step, lang=src.paper.lang, cli=self._cli())
 
 
 def _generate_step(analyzer: Analyzer, key: str, src: PaperSource, results: dict[str, Any]) -> dict[str, Any]:
@@ -166,13 +166,15 @@ class PaperService:
 
     # ---------- 作成 ----------
 
-    def create(self, *, data: bytes, pages: list[str], filename: str, level: str, sha256: str = "", owner: str | None = None) -> tuple[str, bool]:
+    def create(
+        self, *, data: bytes, pages: list[str], filename: str, level: str, lang: str = "ja", sha256: str = "", owner: str | None = None
+    ) -> tuple[str, bool]:
         """論文の記録を作る。同じ PDF が解析済みなら解析結果（results）だけを写し、再解析しない。
 
         記録はアップロードごとに新しく作り、ほかの人の論文IDや会話履歴は返さない。
         新しく解析する場合だけ、解析の1日の上限を使う。上限に達していれば何も保存せず QuotaExceeded。
         """
-        existing_id = store.find_by_hash(sha256, level) if sha256 else None
+        existing_id = store.find_by_hash(sha256, level, lang) if sha256 else None
         source = store.load(existing_id) if existing_id else None
         if source is None and not self.analysis_quota.take():
             raise QuotaExceeded
@@ -185,6 +187,7 @@ class PaperService:
                 "filename": filename,
                 "sha256": sha256,
                 "level": level,
+                "lang": lang,
                 "page_count": len(pages),
                 "status": "done" if source else "queued",
                 "error": None,

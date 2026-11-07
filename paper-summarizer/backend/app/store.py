@@ -177,6 +177,7 @@ def list_papers(owner: str | None) -> list[dict[str, Any]]:
             "title": (p.get("results", {}).get("step1") or {}).get("title"),
             "status": p["status"],
             "level": p.get("level", "undergrad"),
+            "lang": p.get("lang", "ja"),
             "created_at": p["created_at"],
         }
         for p in _iter_papers()
@@ -185,8 +186,8 @@ def list_papers(owner: str | None) -> list[dict[str, Any]]:
     return sorted(items, key=lambda x: x["created_at"], reverse=True)
 
 
-def find_by_hash(sha256: str, level: str) -> str | None:
+def find_by_hash(sha256: str, level: str, lang: str = "ja") -> str | None:
     for p in _iter_papers():
-        if p.get("sha256") == sha256 and p.get("level") == level and p.get("status") == "done":
+        if p.get("sha256") == sha256 and p.get("level") == level and p.get("lang", "ja") == lang and p.get("status") == "done":
             return p["id"]
     return None
