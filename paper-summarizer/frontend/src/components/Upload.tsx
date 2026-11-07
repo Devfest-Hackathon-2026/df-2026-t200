@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type Health, type Lang, type Level, type PaperSummary } from '../api'
+import { api, type Health, type Lang, type PaperSummary } from '../api'
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '解析待ち',
@@ -9,8 +9,6 @@ const STATUS_LABEL: Record<string, string> = {
   done: '完了',
   failed: '解析に失敗',
 }
-
-const LEVEL_LABEL: Record<Level, string> = { undergrad: '学部生向け', grad: '大学院生向け' }
 
 /** 一覧に出す日付と時刻（ブラウザの時刻で「11月5日 18:30」、今年でなければ年も付ける）。同じ日に何度も開いても見分けられるよう時刻も出す。読めない値は出さない */
 function formatDate(iso: string): string {
@@ -37,10 +35,7 @@ function PaperCard({ paper, onOpen }: { paper: PaperSummary; onOpen: (id: string
     <button type="button" className="paper-card sheet" onClick={() => onOpen(paper.id)}>
       <span className={`magnet ${magnetColor(paper.status)}`} aria-hidden="true" />
       <span className="paper-card-title">{paper.title || paper.filename}</span>
-      <span className="paper-card-meta">
-        {date && <span>{date}</span>}
-        {paper.level && LEVEL_LABEL[paper.level] && <span>{LEVEL_LABEL[paper.level]}</span>}
-      </span>
+      <span className="paper-card-meta">{date && <span>{date}</span>}</span>
       <span className="paper-card-foot">
         <span className={`status ${paper.status}`}>{STATUS_LABEL[paper.status] ?? paper.status}</span>
         {step != null && (
@@ -57,7 +52,6 @@ function PaperCard({ paper, onOpen }: { paper: PaperSummary; onOpen: (id: string
 }
 
 export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id: string) => void }) {
-  const [level, setLevel] = useState<Level>('undergrad')
   const [lang, setLang] = useState<Lang>('ja')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -82,7 +76,7 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
     busyRef.current = true
     setBusy(true)
     try {
-      const res = await api.upload(file, level, lang)
+      const res = await api.upload(file, lang)
       onOpen(res.id)
     } catch (e) {
       setError(`アップロードできませんでした。${(e as Error).message}`)
@@ -108,22 +102,6 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
           <p>
             前提知識の整理、手法の流れ、批判的に読むための問いを、論文のページを添えて作ります。AIの解説は間違えることがあるので、ページを開いて原文で確かめながら読んでください。
           </p>
-        </div>
-
-        <div className="level" role="radiogroup" aria-labelledby="level-label">
-          <span className="level-label" id="level-label">
-            説明のレベル
-          </span>
-          <div className="level-options">
-            <label className={level === 'undergrad' ? 'checked' : ''}>
-              <input type="radio" name="level" checked={level === 'undergrad'} onChange={() => setLevel('undergrad')} disabled={busy} />
-              学部生向け
-            </label>
-            <label className={level === 'grad' ? 'checked' : ''}>
-              <input type="radio" name="level" checked={level === 'grad'} onChange={() => setLevel('grad')} disabled={busy} />
-              大学院生向け
-            </label>
-          </div>
         </div>
 
         <div className="level" role="radiogroup" aria-labelledby="lang-label">

@@ -8,15 +8,14 @@ const health: Health = { demo_mode: true, backend: 'demo', analysis_model: 'm', 
 const fileInput = (c: HTMLElement) => c.querySelector('input[type=file]') as HTMLInputElement
 
 describe('Upload', () => {
-  it('uploads a PDF with the selected level and opens it', async () => {
+  it('uploads a PDF without asking for a level and opens it', async () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     const upload = vi.spyOn(api, 'upload').mockResolvedValue({ id: 'new', reused: false })
     const onOpen = vi.fn()
     const { container } = render(<Upload health={health} onOpen={onOpen} />)
-    await userEvent.click(screen.getByLabelText('大学院生向け'))
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
     await userEvent.upload(fileInput(container), file)
-    expect(upload).toHaveBeenCalledWith(file, 'grad', 'ja')
+    expect(upload).toHaveBeenCalledWith(file, 'ja')
     expect(onOpen).toHaveBeenCalledWith('new')
   })
 
@@ -27,7 +26,7 @@ describe('Upload', () => {
     await userEvent.click(screen.getByLabelText('English'))
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
     await userEvent.upload(fileInput(container), file)
-    expect(upload).toHaveBeenCalledWith(file, 'undergrad', 'en')
+    expect(upload).toHaveBeenCalledWith(file, 'en')
   })
 
   it('offers a language radio group, Japanese by default, usable with the keyboard', async () => {
@@ -76,31 +75,33 @@ describe('Upload', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'これまでの論文' })).toBeInTheDocument()
   })
 
-  it('shows the level selector before the drop zone', () => {
+  it('does not offer a level choice', () => {
     vi.spyOn(api, 'list').mockResolvedValue([])
     render(<Upload health={health} onOpen={vi.fn()} />)
-    const level = screen.getByRole('radiogroup', { name: '説明のレベル' })
-    const drop = screen.getByRole('button', { name: 'PDFを選択' })
-    expect(level.compareDocumentPosition(drop) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByRole('radiogroup', { name: '説明のレベル' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('大学院生向け')).not.toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: '解説の言語' })).toBeInTheDocument()
   })
 
-  it('shows the date and level of previous papers', async () => {
+  it('shows the date but no level for previous papers', async () => {
     vi.spyOn(api, 'list').mockResolvedValue([
-      { id: 'a', filename: 'a.pdf', title: 'Same Paper', status: 'done', created_at: '2026-11-05T09:30:00+00:00', level: 'grad' },
-      { id: 'b', filename: 'a.pdf', title: 'Same Paper', status: 'done', created_at: '2026-11-04T09:30:00+00:00', level: 'undergrad' },
+      { id: 'a', filename: 'a.pdf', title: 'Same Paper', status: 'done', created_at: '2026-11-05T09:30:00+00:00' },
+      { id: 'b', filename: 'a.pdf', title: 'Same Paper', status: 'done', created_at: '2026-11-04T09:30:00+00:00' },
       { id: 'c', filename: 'c.pdf', title: null, status: 'failed', created_at: 'not a date' },
     ])
     render(<Upload health={health} onOpen={vi.fn()} />)
-    const a = await screen.findByRole('button', { name: /Same Paper.*大学院生向け/ })
-    expect(a).toHaveTextContent(/11月[45]日/)
-    expect(a).toHaveTextContent('続きから読む')
-    expect(screen.getByRole('button', { name: /Same Paper.*学部生向け/ })).toHaveTextContent(/11月[34]日/)
+    const cards = await screen.findAllByRole('button', { name: /Same Paper/ })
+    expect(cards).toHaveLength(2)
+    expect(cards[0]).toHaveTextContent(/11月[45]日/)
+    expect(cards[0]).toHaveTextContent('続きから読む')
+    expect(cards[1]).toHaveTextContent(/11月[34]日/)
+    for (const c of cards) expect(c).not.toHaveTextContent(/大学院生向け|学部生向け/)
     expect(screen.getByRole('button', { name: /c\.pdf/ })).toHaveTextContent('失敗')
   })
 
   it('shows how far the analysis has gone on each card', async () => {
     vi.spyOn(api, 'list').mockResolvedValue([
-      { id: 'p', filename: 'draft.pdf', title: null, status: 'processing_step2', created_at: '2026-11-04T09:30:00+00:00', level: 'grad' },
+      { id: 'p', filename: 'draft.pdf', title: null, status: 'processing_step2', created_at: '2026-11-04T09:30:00+00:00' },
     ])
     const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
     const card = await screen.findByRole('button', { name: /draft\.pdf/ })
@@ -112,9 +113,9 @@ describe('Upload', () => {
     expect(card.querySelector('.magnet')).toHaveClass('yellow')
   })
 
-  it('adds the year only for papers from an earlier year and hides unknown levels', async () => {
+  it('adds the year only for papers from an earlier year and shows only the date', async () => {
     vi.spyOn(api, 'list').mockResolvedValue([
-      { id: 'o', filename: 'old.pdf', title: 'Old', status: 'done', created_at: '2020-03-02T09:30:00+00:00', level: 'phd' as never },
+      { id: 'o', filename: 'old.pdf', title: 'Old', status: 'done', created_at: '2020-03-02T09:30:00+00:00' },
     ])
     render(<Upload health={health} onOpen={vi.fn()} />)
     const card = await screen.findByRole('button', { name: /Old/ })

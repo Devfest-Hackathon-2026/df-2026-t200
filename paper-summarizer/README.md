@@ -84,7 +84,7 @@ Google Cloud（Cloud RunとFirebase Hosting）へのデプロイ手順は[DEPLOY
 | メソッド | パス | 内容 |
 | --- | --- | --- |
 | GET | `/api/health` | 動作モード（demo / gemini-api / vertex）とモデル名 |
-| POST | `/api/papers` | PDF アップロード（multipart: `file`, `level`=undergrad\|grad）。同じ PDF は再解析せず、解析結果だけを写した新しい論文IDを返す（`reused: true`） |
+| POST | `/api/papers` | PDF アップロード（multipart: `file`, `lang`=ja\|en、任意で `level`=undergrad\|grad。省略すると undergrad で、画面からは送らない）。同じ PDF は再解析せず、解析結果だけを写した新しい論文IDを返す（`reused: true`） |
 | GET | `/api/papers/{id}` | 状態と生成結果 |
 | GET | `/api/papers/{id}/pdf` | PDF 本体 |
 | POST | `/api/papers/{id}/ask` | 質問（`{question, current_step}`）→ 根拠付き回答。論文ごとに1分10回まで（超えると 429） |
