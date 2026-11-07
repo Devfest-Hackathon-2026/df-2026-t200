@@ -242,7 +242,7 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
               <PageChip page={sel.first_page} label={sel.first_page ? `初出のp.${sel.first_page}を開く` : undefined} />
             )}
             {usedBy.length > 0 && (
-              <div className="chips" role="group" aria-label="この概念を使う式">
+              <div className="chips concept-uses" role="group" aria-label="この概念を使う式">
                 <span className="chips-label">この概念を使う式</span>
                 {usedBy.map((r) => (
                   <button
