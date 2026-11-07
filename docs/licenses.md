@@ -86,4 +86,8 @@ PyMuPDFはAGPL-3.0なので、ネットワーク越しに使わせる場合は�
 
 ## 画像・アイコン
 
-画面のアイコン（favicon）はチームで作った。ほかに外部の画像・アイコン・音声は使っていない。アーキテクチャ図（#23）を作るときは、Google Cloudの公式アイコン（<https://cloud.google.com/icons>）を使い、この表に足す。
+画面のアイコン（favicon）はチームで作った。ほかに画面では外部の画像・アイコン・音声を使っていない。
+
+| 素材 | 出典 | 使い方 |
+| --- | --- | --- |
+| Google Cloud 公式アイコン（Cloud Run、Cloud Storage、Vertex AI、カテゴリの Web & Mobile と DevOps） | <https://cloud.google.com/icons>（Google Cloudが構成図のために配布しているもの） | `docs/architecture.svg` と `docs/architecture.png` の構成図。Firebase HostingとGitHub Actionsには専用のアイコンが無いので、カテゴリのアイコンを使った |
