@@ -132,11 +132,14 @@ deploy_api() {
   # 「誰でも呼べる」設定は setup 後の初回デプロイで付ける。CI（SKIP_INVOKER_IAM=1）からは変えない
   local INVOKER_FLAG=(--allow-unauthenticated)
   [ "${SKIP_INVOKER_IAM:-0}" = "1" ] && INVOKER_FLAG=()
+  # 待機インスタンスは MIN_INSTANCES を渡したときだけ変える。渡さないと今の値のまま（CD で審査期間の 1 台を 0 台に戻さない）
+  local MIN_FLAG=()
+  [ -n "${MIN_INSTANCES:-}" ] && MIN_FLAG=(--min-instances "$MIN_INSTANCES")
   echo "== Cloud Run にデプロイ（Cloud Build でイメージを作る）"
   # 保存先はファイル（JSON）なので、同時に書き込まないようインスタンスは 1 台に固定する。
   # 解析は応答を返した後もバックグラウンドで続くため、CPU を常に割り当てる（--no-cpu-throttling）。
   # 待機インスタンス 0 台だと、アクセスのない間に解析の途中でもインスタンスが止まりうる。
-  # 審査の期間は MIN_INSTANCES=1 でデプロイし、常に 1 台起こしておく（その間は費用がかかり続ける）。
+  # 審査の期間は MIN_INSTANCES=1 でデプロイし、常に 1 台起こしておく（その間は費用がかかり続ける）。終わったら MIN_INSTANCES=0 で戻す。
   # ボリュームは毎回付け直し、再デプロイで同じ名前が重ならないようにする。
   gc run deploy "$SERVICE" \
     --source backend \
@@ -144,7 +147,7 @@ deploy_api() {
     --service-account "$SA_EMAIL" \
     ${INVOKER_FLAG[@]+"${INVOKER_FLAG[@]}"} \
     --execution-environment gen2 \
-    --min-instances "${MIN_INSTANCES:-0}" --max-instances 1 \
+    ${MIN_FLAG[@]+"${MIN_FLAG[@]}"} --max-instances 1 \
     --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 --concurrency 20 \
     --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,DATA_DIR=/data,MAX_ANALYSES_PER_DAY=${MAX_ANALYSES_PER_DAY},MAX_ASKS_PER_DAY=${MAX_ASKS_PER_DAY}" \
     --clear-volumes --clear-volume-mounts \

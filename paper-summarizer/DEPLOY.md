@@ -44,7 +44,11 @@ PROJECT_ID=<プロジェクト ID> ./deploy.sh setup   # 初回だけ
 PROJECT_ID=<プロジェクト ID> ./deploy.sh all
 # 審査の期間（提出から Regional Day、Demo Day の前後）は待機インスタンスを 1 台にする
 PROJECT_ID=<プロジェクト ID> MIN_INSTANCES=1 ./deploy.sh api
+# 審査の期間が終わったら 0 台に戻す
+PROJECT_ID=<プロジェクト ID> MIN_INSTANCES=0 ./deploy.sh api
 ```
+
+`MIN_INSTANCES`を渡さないときは、待機インスタンスの数を変えない。CDからのデプロイもこの数を変えないので、審査の期間に1台にしたあとmainへマージしても0台に戻らない。
 
 `setup`では次のことを行う。
 
@@ -99,7 +103,7 @@ PROJECT_ID=<プロジェクト ID> ./deploy.sh cd-setup
 
 `deploy.sh api`は、解析と質問の上限を毎回`MAX_ANALYSES_PER_DAY`（既定10）と`MAX_ASKS_PER_DAY`（既定50）で上書きする。既定は審査期間に合わせて低くしてある。変えるときは`MAX_ANALYSES_PER_DAY=30 PROJECT_ID=... ./deploy.sh api`のように渡す。
 
-Geminiを止めたいときは、上限を0にして環境変数だけを書き換える。イメージは作り直さないので、すぐに反映される。
+Geminiを止めたいときは、上限を0にして環境変数だけを書き換える。イメージは作り直さないので、すぐに反映される。ただし`deploy.sh api`は上限を毎回上書きするので、止めている間にmainへマージすると、CDのデプロイで既定の10回・50回に戻る。止めている間はマージしない。
 
 ```bash
 gcloud run services update paper-summarizer-api --region asia-northeast1 --project <プロジェクト ID> \
