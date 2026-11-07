@@ -20,7 +20,7 @@ CC BY 4.0は、著作者・題名・出典・ライセンスを表示すれば�
 
 ## ライブラリ（バックエンド、Python）
 
-本番のイメージに入るもの（`paper-summarizer/backend/pyproject.toml` の `dependencies`）。
+本番のイメージに入るもの（`paper-summarizer/backend/pyproject.toml` の `dependencies`）。表には直接依存だけを載せ、`uvicorn[standard]` が入れる追加のパッケージや推移的な依存は載せていない。
 
 | パッケージ | バージョン | ライセンス |
 | --- | --- | --- |
@@ -77,7 +77,7 @@ PyMuPDFはAGPL-3.0なので、ネットワーク越しに使わせる場合は�
 | --- | --- | --- |
 | Docker イメージ `python:3.12-slim` | Python Software Foundation License（中のDebianのパッケージはそれぞれのライセンス） | Cloud Runで動かすイメージの土台 |
 | uv 0.8.11（`ghcr.io/astral-sh/uv`） | MIT または Apache-2.0 | イメージの中で依存パッケージを入れる |
-| GitHub Actions（actions/checkout、actions/setup-node） | MIT | CIとCD |
+| GitHub Actions（actions/checkout、actions/setup-node、actions/upload-artifact、astral-sh/setup-uv） | MIT | CIとCD。upload-artifactはe2eテストの失敗時の記録、setup-uvはバックエンドのテスト環境に使う |
 | GitHub Actions（google-github-actions/auth、setup-gcloud） | Apache-2.0 | CDでGCPに入る |
 
 ## 生成AIの出力
