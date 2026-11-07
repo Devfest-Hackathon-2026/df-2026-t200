@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from . import config, store
 from .pdf_utils import TooManyPages, TooMuchText, extract_pages
 from .schemas import AskRequest
-from .services import AskFailed, PaperService, QuotaExceeded
+from .services import AskFailed, PaperNotFound, PaperService, QuotaExceeded, retryable
 
 log = logging.getLogger("paper")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -137,7 +137,9 @@ def get_pdf(paper_id: str) -> FileResponse | RedirectResponse:
 
 @app.post("/api/papers/{paper_id}/retry")
 def retry(paper_id: str, service: Service) -> dict[str, Any]:
-    _load_or_404(paper_id)
+    # 再実行できない状態で断る分（409）は、1分あたりの回数に数えない
+    if not retryable(_load_or_404(paper_id)):
+        raise HTTPException(409, "失敗した解析、または止まったままの解析のみ再実行できます")
     if not service.retry_limiter.allow(paper_id):
         raise HTTPException(429, "再実行の回数が多すぎます。1分ほど待ってからもう一度お試しください。")
     try:
@@ -158,6 +160,8 @@ def ask(paper_id: str, req: AskRequest, service: Service) -> dict[str, Any]:
         raise HTTPException(429, QUOTA_MESSAGE)
     try:
         messages = service.ask(paper_id, req.question, req.current_step)
+    except PaperNotFound as e:
+        raise HTTPException(404, "論文が見つかりません") from e
     except AskFailed as e:
         raise HTTPException(502, e.message) from e
     return {"messages": messages}

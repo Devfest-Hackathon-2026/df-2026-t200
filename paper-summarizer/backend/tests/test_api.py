@@ -353,6 +353,33 @@ def test_retry_is_rate_limited_per_paper(client, service, sample_pdf, monkeypatc
     assert started == [pid]
 
 
+def test_refused_retry_does_not_use_up_the_rate_limit(client, service, sample_pdf, monkeypatch):
+    """再実行できない状態で断られた分（409）は、1分あたりの回数に数えない。"""
+    started = []
+    monkeypatch.setattr(service, "_starter", started.append)
+    monkeypatch.setattr(service, "retry_limiter", RateLimiter(1, 60))
+    pid = _stuck_paper(sample_pdf, "done")
+    assert client.post(f"/api/papers/{pid}/retry").status_code == 409
+    store.update(pid, status="failed")
+    assert client.post(f"/api/papers/{pid}/retry").status_code == 200
+    assert started == [pid]
+
+
+def test_ask_returns_404_when_the_paper_disappears_midway(client, sample_pdf, monkeypatch):
+    pid = _upload(client, sample_pdf).json()["id"]
+    _wait_done(client, pid)
+    real_load = store.load
+    calls = []
+
+    def load_then_vanish(paper_id):
+        calls.append(paper_id)
+        return real_load(paper_id) if len(calls) == 1 else None
+
+    monkeypatch.setattr(store, "load", load_then_vanish)
+    res = client.post(f"/api/papers/{pid}/ask", json={"question": "q"})
+    assert res.status_code == 404
+
+
 def test_get_pdf_redirects_when_storage_gives_url(client, sample_pdf, monkeypatch):
     pid = _upload(client, sample_pdf).json()["id"]
     monkeypatch.setattr(store, "pdf_url", lambda _pid: "https://storage.example/signed")

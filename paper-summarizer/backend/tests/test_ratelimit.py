@@ -37,3 +37,14 @@ def test_is_thread_safe():
     for t in threads:
         t.join()
     assert results.count(True) == 50
+
+
+def test_forgets_keys_that_are_no_longer_used():
+    """使われなくなった論文の記録を残し続けない（長く動くプロセスでメモリが増え続けない）。"""
+    clock = Clock()
+    rl = RateLimiter(2, 60, clock=clock)
+    for i in range(100):
+        rl.allow(f"paper-{i}")
+    clock.t = 61
+    rl.allow("other")
+    assert set(rl._hits) == {"other"}

@@ -118,6 +118,10 @@ class QuotaExceeded(Exception):
     """サービス全体の1日の上限に達した。"""
 
 
+class PaperNotFound(Exception):
+    """処理の途中で論文の記録が消えた。"""
+
+
 class AskFailed(Exception):
     def __init__(self, message: str):
         super().__init__(message)
@@ -269,7 +273,10 @@ class PaperService:
     # ---------- Q&A ----------
 
     def ask(self, paper_id: str, question: str, current_step: int | None) -> list[dict[str, Any]]:
-        paper = Paper.model_validate(store.load(paper_id))
+        raw = store.load(paper_id)
+        if raw is None:
+            raise PaperNotFound(paper_id)
+        paper = Paper.model_validate(raw)
         src = self._source(paper)
         try:
             out = self.analyzer_for(paper).ask(src, question, paper.messages, current_step)
