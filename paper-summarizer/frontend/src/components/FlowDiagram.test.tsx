@@ -230,7 +230,7 @@ describe('FlowDiagram scrolling', () => {
   it('scrolls sideways so the nodes of the current frame are visible', () => {
     const scrollTo = fakeScroller(400)
     const { rerender } = render(<FlowDiagram flow={wide} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ left: 0 }))
+    expect((scrollTo.mock.lastCall![0] as { left: number }).left).toBeLessThan(100)
     rerender(<FlowDiagram flow={wide} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
     const { left } = scrollTo.mock.lastCall![0] as { left: number }
     expect(left).toBeGreaterThan(800)

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { FlowEdge, FlowNode } from '../api'
-import { FLOW_NODE_H, FLOW_NODE_W, edgeKey, flowEdgePath, layoutFlow } from './flowLayout'
+import {
+  FLOW_COL_GAP,
+  FLOW_EDGE_LABEL_MAX,
+  FLOW_EDGE_LABEL_PX,
+  FLOW_NODE_H,
+  FLOW_NODE_W,
+  edgeKey,
+  flowEdgePath,
+  layoutFlow,
+} from './flowLayout'
 
 const node = (id: string, kind: FlowNode['kind'] = 'process'): FlowNode => ({ id, label: id, kind, shape: null, evidence: [] })
 const edge = (from: string, to: string): FlowEdge => ({ from, to, label: '' })
@@ -54,5 +63,11 @@ describe('flowEdgePath', () => {
     const l = layoutFlow([node('a')], [])
     expect(flowEdgePath(edge('a', 'x'), l)).toBeNull()
     expect(edgeKey(edge('a', 'b'))).toBe('a->b')
+  })
+})
+
+describe('flow column gap', () => {
+  it('leaves room for an edge label of full-width characters between two nodes', () => {
+    expect(FLOW_COL_GAP).toBeGreaterThanOrEqual(FLOW_EDGE_LABEL_MAX * FLOW_EDGE_LABEL_PX + 8)
   })
 })

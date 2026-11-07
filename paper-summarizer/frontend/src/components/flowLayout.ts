@@ -2,7 +2,10 @@ import type { FlowEdge, FlowNode } from '../api'
 
 export const FLOW_NODE_W = 150
 export const FLOW_NODE_H = 66
-export const FLOW_COL_GAP = 56
+// 矢印のラベル（最大 FLOW_EDGE_LABEL_MAX 文字、11px）が全角でもノードに隠れない間隔にする
+export const FLOW_EDGE_LABEL_MAX = 8
+export const FLOW_EDGE_LABEL_PX = 11
+export const FLOW_COL_GAP = FLOW_EDGE_LABEL_MAX * FLOW_EDGE_LABEL_PX + 16
 export const FLOW_ROW_GAP = 20
 export const FLOW_PAD = 14
 
