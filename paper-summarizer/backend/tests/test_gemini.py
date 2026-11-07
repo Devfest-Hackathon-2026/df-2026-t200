@@ -273,3 +273,11 @@ def test_invalid_stages_still_fail_even_when_flow_is_dropped(fake):
     fake(s2)
     with pytest.raises(ValidationError):
         gemini.step2(b"%PDF", "undergrad", mock.step1(PAGES, "a.pdf"))
+
+
+def test_japanese_output_asks_for_established_terms_and_no_markdown():
+    text = gemini.SYSTEM.format(level=gemini.LEVELS["undergrad"], lang=gemini.LANGS["ja"])
+    assert "教師なし" in text and "自己回帰" in text and "アーキテクチャ" in text
+    assert "Markdown" in text
+    english = gemini.SYSTEM.format(level=gemini.LEVELS["undergrad"], lang=gemini.LANGS["en"])
+    assert "教師なし" not in english
