@@ -52,8 +52,42 @@ export const step1: Step1 = {
   summary: ['問題A', '解き方B', '結果C'],
   difficulty: '中級',
   concepts: [
-    { id: 'dot', name: '内積', description: 'ベクトルの積', why_needed: '注意の計算に使う', first_page: 2, depends_on: [] },
-    { id: 'softmax', name: 'softmax', description: '確率に変換', why_needed: '重みの正規化', first_page: 3, depends_on: ['dot'] },
+    {
+      id: 'dot',
+      name: '内積',
+      description: 'ベクトルの積',
+      why_needed: '注意の計算に使う',
+      first_page: 2,
+      depends_on: [],
+      importance: 'essential',
+      category: 'math',
+      origin: 'paper',
+      evidence: [], // 引用が無い paper の概念は、初出ページのチップで代える
+    },
+    {
+      id: 'expectation',
+      name: '期待値',
+      description: '確率で重みを付けた平均',
+      why_needed: '確率の平均を扱う',
+      first_page: null,
+      depends_on: [],
+      importance: 'advanced',
+      category: 'math',
+      origin: 'ai_inference',
+      evidence: [],
+    },
+    {
+      id: 'softmax',
+      name: 'softmax',
+      description: '確率に変換',
+      why_needed: '重みの正規化',
+      first_page: 3,
+      depends_on: ['dot', 'expectation'],
+      importance: 'recommended',
+      category: 'algorithm',
+      origin: 'paper',
+      evidence: [{ page: 3, quote: 'the weights are normalized with a softmax function', verified: false }],
+    },
     {
       id: 'attention',
       name: 'Attention',
@@ -61,10 +95,23 @@ export const step1: Step1 = {
       why_needed: '本論文の中心',
       first_page: null,
       depends_on: ['softmax'],
+      importance: 'essential',
+      category: 'concept',
+      origin: 'paper',
+      evidence: [{ page: 4, quote: 'attention is a weighted sum of the values', verified: true }],
     },
   ],
   sections: [{ title: 'Introduction', page_start: 1, page_end: 2 }],
   reading_order: [{ section: 'Introduction', page: 1, reason: '全体像をつかむ' }],
+}
+
+/** importance などを持たない、古い保存済みの結果 */
+export const step1Old: Step1 = {
+  ...step1,
+  concepts: [
+    { id: 'dot', name: '内積', description: 'ベクトルの積', why_needed: '注意の計算に使う', first_page: 2, depends_on: [] },
+    { id: 'softmax', name: 'softmax', description: '確率に変換', why_needed: '重みの正規化', first_page: 3, depends_on: ['dot'] },
+  ],
 }
 
 export const step2: Step2 = {

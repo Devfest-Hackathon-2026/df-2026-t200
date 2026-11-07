@@ -1,6 +1,9 @@
 export type Evidence = { page: number; quote: string; verified?: boolean | null }
 export type Origin = 'paper' | 'ai_inference'
 
+export type Importance = 'essential' | 'recommended' | 'advanced'
+
+/** importance 以下は後から足した項目。古い保存済みの結果には無いので省略できる */
 export type Concept = {
   id: string
   name: string
@@ -8,6 +11,10 @@ export type Concept = {
   why_needed: string
   first_page: number | null
   depends_on: string[]
+  importance?: Importance
+  category?: string
+  origin?: Origin
+  evidence?: Evidence[]
 }
 export type Step1 = {
   title: string

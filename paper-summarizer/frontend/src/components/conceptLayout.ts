@@ -1,4 +1,22 @@
-import type { Concept } from '../api'
+import type { Concept, Importance } from '../api'
+
+/** 前提知識マップの表示範囲。必須だけ / 推奨まで / すべて */
+export type ConceptLevel = 'essential' | 'recommended' | 'all'
+export const CONCEPT_LEVELS: ConceptLevel[] = ['essential', 'recommended', 'all']
+export const isConceptLevel = (v: unknown): v is ConceptLevel => CONCEPT_LEVELS.includes(v as ConceptLevel)
+
+const RANK: Record<Importance, number> = { essential: 0, recommended: 1, advanced: 2 }
+const LEVEL_MAX: Record<ConceptLevel, number> = { essential: 0, recommended: 1, all: 2 }
+
+/** 重要度。古い結果（項目なし）や想定外の値は「推奨」として扱う */
+export const importanceOf = (c: Concept): Importance => (c.importance && c.importance in RANK ? c.importance : 'recommended')
+
+/** 論文に出てこない前提知識（AIの推定）か */
+export const isInference = (c: Concept): boolean => c.origin === 'ai_inference'
+
+/** 表示範囲に入る概念だけを返す（元の配列は変えない）。隠した概念への依存は、レイアウトと矢印が自動で無視する */
+export const filterConcepts = (concepts: Concept[], level: ConceptLevel): Concept[] =>
+  concepts.filter((c) => RANK[importanceOf(c)] <= LEVEL_MAX[level])
 
 export const NODE_W = 176
 export const NODE_H = 58
