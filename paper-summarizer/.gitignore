@@ -24,3 +24,6 @@ backend/.e2e-data/
 coverage.xml
 .pytest_cache/
 .ruff_cache/
+
+# Firebase CLI のデプロイ用キャッシュ
+.firebase/
