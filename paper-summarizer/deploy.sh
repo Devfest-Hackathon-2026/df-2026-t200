@@ -149,7 +149,7 @@ deploy_api() {
     --execution-environment gen2 \
     ${MIN_FLAG[@]+"${MIN_FLAG[@]}"} --max-instances 1 \
     --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 --concurrency 20 \
-    --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,DATA_DIR=/data,MAX_ANALYSES_PER_DAY=${MAX_ANALYSES_PER_DAY},MAX_ASKS_PER_DAY=${MAX_ASKS_PER_DAY}" \
+    --set-env-vars "GIT_SHA=${GIT_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,DATA_DIR=/data,MAX_ANALYSES_PER_DAY=${MAX_ANALYSES_PER_DAY},MAX_ASKS_PER_DAY=${MAX_ASKS_PER_DAY}" \
     --clear-volumes --clear-volume-mounts \
     --add-volume "name=data,type=cloud-storage,bucket=${BUCKET}" \
     --add-volume-mount "volume=data,mount-path=/data" \

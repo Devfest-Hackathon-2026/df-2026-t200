@@ -64,6 +64,7 @@ def health() -> dict[str, Any]:
         "analysis_model": config.ANALYSIS_MODEL,
         "qa_model": config.QA_MODEL,
         "max_upload_mb": config.MAX_UPLOAD_MB,
+        "version": config.GIT_SHA,
     }
 
 

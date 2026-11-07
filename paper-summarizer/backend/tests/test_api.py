@@ -57,6 +57,12 @@ def _wait_done(client, pid, timeout=10.0):
     raise AssertionError(f"analysis did not finish: {p['status']}")
 
 
+def test_health_reports_the_running_commit(client, monkeypatch):
+    # CD はこの値と比べて、文書だけの変更ならデプロイを省く
+    monkeypatch.setattr(config, "GIT_SHA", "abc123")
+    assert client.get("/api/health").json()["version"] == "abc123"
+
+
 def test_health_reports_demo_mode(client):
     body = client.get("/api/health").json()
     assert body["ok"] is True
