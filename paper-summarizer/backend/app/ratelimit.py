@@ -17,11 +17,21 @@ class RateLimiter:
         self._clock = clock
         self._hits: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
+        self._last_sweep = clock()
+
+    def _sweep(self, now: float) -> None:
+        """窓より古い記録しか残っていないキーを消す（使われなくなった論文の記録を持ち続けない）。"""
+        if now - self._last_sweep < self.window_sec:
+            return
+        self._last_sweep = now
+        for key in [k for k, hits in self._hits.items() if not hits or now - hits[-1] >= self.window_sec]:
+            del self._hits[key]
 
     def allow(self, key: str) -> bool:
         """key の直近 window_sec 秒の回数が limit 未満なら記録して True、超えていれば False。"""
         now = self._clock()
         with self._lock:
+            self._sweep(now)
             hits = self._hits.setdefault(key, deque())
             while hits and now - hits[0] >= self.window_sec:
                 hits.popleft()
