@@ -214,15 +214,24 @@ def ask(pages: list[str], question: str) -> dict[str, Any]:
 
 
 def quiz_rewrite(targets: list[dict[str, Any]], lang: str = "ja") -> dict[str, Any]:
-    """デモモードの誤り探し。文の頭にある「【デモ】」を「【デモ・誤り】」に変えるだけの、いつも同じ書き換え。"""
+    """デモモードの誤り探し。文頭の「【デモ】」を「【デモ・誤り】」に変えるだけの、いつも同じ書き換え。
+
+    サンプルの文は原文と無関係なので、根拠の部分（quote_span）は引用全体を使う。
+    """
     time.sleep(0.5)
-    return {
-        "rewrites": [
+    out = []
+    for t in targets:
+        marked = "【デモ】" in t["text"]
+        changed_from = "【デモ】" if marked else t["text"][:1]
+        changed_to = "【デモ・誤り】" if marked else "【デモ・誤り】" + t["text"][:1]
+        out.append(
             {
                 "id": t["id"],
-                "altered": t["text"].replace("【デモ】", "【デモ・誤り】", 1) if "【デモ】" in t["text"] else f"【デモ・誤り】{t['text']}",
+                "altered": t["text"].replace(changed_from, changed_to, 1),
                 "changed": "【デモ】文の一部を別の内容に変えたという想定のサンプルです。",
+                "changed_from": changed_from,
+                "changed_to": changed_to,
+                "quote_span": " ".join(t["quote"].split()),
             }
-            for t in targets
-        ],
-    }
+        )
+    return {"rewrites": out}

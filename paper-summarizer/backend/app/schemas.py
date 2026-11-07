@@ -158,8 +158,13 @@ class AskRequest(BaseModel):
 
 class QuizRewrite(BaseModel):
     id: str = Field(description="渡された文の id（そのまま返す）")
-    altered: str = Field(description="元の文の事実を1か所だけ変えた文。元の文と同じ言語・同じ長さ程度で、文として自然にする")
+    altered: str = Field(description="元の文の changed_from を changed_to に1か所だけ置き換えた文。ほかは1文字も変えない")
     changed: str = Field(description="何をどう変えたか（例: 数値を 8 から 12 に変えた）を1文で")
+    changed_from: str = Field(description="元の文の中の、変える語句（元の文にそのままある文字列）")
+    changed_to: str = Field(description="changed_from の代わりに入れた語句")
+    quote_span: str = Field(
+        description="根拠の引用の中の、changed_from の事実を述べている部分。引用の一部をそのまま（言い換えず、引用と同じ言語で）抜き出す。20文字以上。changed_to を含まない"
+    )
 
 
 class QuizRewrites(BaseModel):

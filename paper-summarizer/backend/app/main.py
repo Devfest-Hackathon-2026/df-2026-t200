@@ -25,7 +25,9 @@ from .services import (
     PaperService,
     QuizAlreadyAnswered,
     QuizBadAnswer,
+    QuizBusy,
     QuizFailed,
+    QuizNotAnswered,
     QuizNotFound,
     QuizNotReady,
     QuizTooSmall,
@@ -206,6 +208,10 @@ def create_quiz(paper_id: str, service: Service, req: QuizCreateRequest | None =
         raise HTTPException(409, "解析が終わってから誤り探しを始められます") from e
     except QuizTooSmall as e:
         raise HTTPException(409, "根拠を確認できた項目が少ないため、この論文では誤り探しの問題を作れません") from e
+    except QuizNotAnswered as e:
+        raise HTTPException(409, "先に答え合わせをしてください") from e
+    except QuizBusy as e:
+        raise HTTPException(409, "問題を作っています。少し待ってからもう一度お試しください") from e
     except RateLimited as e:
         raise HTTPException(429, "問題を作る回数が多すぎます。1分ほど待ってからもう一度お試しください。") from e
     except QuotaExceeded as e:

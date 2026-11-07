@@ -7,11 +7,12 @@
 import random
 import re
 import secrets
+import unicodedata
 from typing import Any
 
 from pydantic import ValidationError
 
-from .pdf_utils import normalize
+from .pdf_utils import MIN_QUOTE_CHARS, normalize
 from .schemas import QuizPick, QuizRewrites
 
 QUIZ_SIZE = 5
@@ -32,11 +33,23 @@ def split_sentences(text: str) -> list[str]:
     return [p for p in parts if MIN_SENTENCE_CHARS <= len(p) <= MAX_SENTENCE_CHARS]
 
 
-def _first_verified(evidence: Any) -> dict[str, Any] | None:
-    for ev in evidence or []:
-        if isinstance(ev, dict) and ev.get("verified") is True and ev.get("quote") and isinstance(ev.get("page"), int):
-            return ev
-    return None
+_TOKEN = re.compile(r"\d+(?:[.,]\d+)?|[A-Za-z][A-Za-z0-9]{2,}|[%×±]")
+_STOP = frozenset("the and for that with this are was were from which these its has have not but can will our their than then".split())
+
+
+def _tokens(text: str) -> set[str]:
+    return {t for t in _TOKEN.findall(unicodedata.normalize("NFKC", text).lower()) if t not in _STOP}
+
+
+def overlap(sentence: str, quote: str) -> int:
+    """文と引用で一致する数値・英字の語・記号の数。日本語の文でも、数値や用語の英字は引用と突き合わせられる。"""
+    return len(_tokens(sentence) & _tokens(quote))
+
+
+def _verified_evidence(evidence: Any) -> list[dict[str, Any]]:
+    return [
+        ev for ev in evidence or [] if isinstance(ev, dict) and ev.get("verified") is True and ev.get("quote") and isinstance(ev.get("page"), int)
+    ]
 
 
 def _sources(results: dict[str, Any]) -> list[tuple[str, str, Any]]:
@@ -52,37 +65,73 @@ def _sources(results: dict[str, Any]) -> list[tuple[str, str, Any]]:
     return out
 
 
-def candidates(results: dict[str, Any], rng: random.Random) -> list[dict[str, Any]]:
-    """誤りの元にできる文。出どころ1つにつき1文だけ選び（同じ段落から偏らない）、その出どころの照合済みの根拠を付ける。"""
+def candidates(results: dict[str, Any], rng: random.Random, *, require_overlap: bool = True) -> list[dict[str, Any]]:
+    """誤りの元にできる文。出どころ1つにつき1文だけ選ぶ（同じ段落から偏らない）。
+
+    文と、その出どころの照合済みの引用の組のうち、数値・英字の語・記号の一致が最も多いものを選ぶ（同点は乱数）。
+    一致が無い出どころは外す。説明の中のほかの文について書かれた引用と組んで、原文で確かめられない誤りを出さないため。
+    require_overlap=False はデモデータ用（サンプルの文は原文と無関係）。
+    """
     out = []
     for source, text, evidence in _sources(results):
-        ev = _first_verified(evidence)
-        sentences = split_sentences(text)
-        if ev is None or not sentences:
+        pairs = [(overlap(sent, ev["quote"]), sent, ev) for sent in split_sentences(text) for ev in _verified_evidence(evidence)]
+        if require_overlap:
+            pairs = [p for p in pairs if p[0] > 0]
+        if not pairs:
             continue
-        out.append({"source": source, "text": rng.choice(sentences), "page": ev["page"], "quote": ev["quote"]})
+        best = max(p[0] for p in pairs)
+        _, sentence, ev = rng.choice([p for p in pairs if p[0] == best])
+        out.append({"source": source, "text": sentence, "page": ev["page"], "quote": ev["quote"]})
     return out
 
 
+def _in_quote(span: str, quote: str) -> bool:
+    """引用の中に span があるか（正規化して、英語は単語の境界で照合する）。"""
+    n_span, n_quote = normalize(span), normalize(quote)
+    if not n_span:
+        return False
+    return n_span in n_quote if not n_span.isascii() else f" {n_span} " in f" {n_quote} "
+
+
 def validate_rewrites(payload: Any, targets: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
-    """Gemini の出力をスキーマで検証し、渡した文すべてに対して使える書き換えがあるかを確かめる。id → {altered, changed}。"""
+    """Gemini の出力をスキーマで検証し、渡した文すべてに、原文で確かめられる書き換えがあるかを確かめる。id → 書き換え。
+
+    確かめるのは機械的にできることだけ（言語に依存しない）:
+    - 出題文の changed_from を changed_to に置き換えたものが altered と一致する（ほかの箇所は変えていない）
+    - quote_span が引用の中にあり（MIN_QUOTE_CHARS 以上）、変えた後の語 changed_to は quote_span に含まれない
+    """
     try:
         rewrites = QuizRewrites.model_validate(payload).rewrites
     except ValidationError as e:
         raise QuizInvalid("schema") from e
-    originals = {t["id"]: t["text"] for t in targets}
+    by_id = {t["id"]: t for t in targets}
     out: dict[str, dict[str, str]] = {}
     for rw in rewrites:
-        original = originals.get(rw.id)
+        target = by_id.get(rw.id)
         altered = " ".join(rw.altered.split())
-        if original is None or rw.id in out or not altered:
+        if target is None or rw.id in out or not altered:
             raise QuizInvalid("unknown, duplicate or empty")
-        if normalize(altered) == normalize(original):
-            raise QuizInvalid("not changed")
+        original = " ".join(target["text"].split())
         if len(altered) > 2 * len(original) + 80:
             raise QuizInvalid("too long")
-        out[rw.id] = {"altered": altered, "changed": " ".join(rw.changed.split())[:300]}
-    if set(out) != set(originals):
+        changed_from, changed_to = " ".join(rw.changed_from.split()), " ".join(rw.changed_to.split())
+        if not changed_from or changed_from == changed_to or changed_from not in original:
+            raise QuizInvalid("changed_from is not in the sentence")
+        if original.replace(changed_from, changed_to, 1) != altered or normalize(altered) == normalize(original):
+            raise QuizInvalid("altered is not the sentence with exactly that replacement")
+        span = " ".join(rw.quote_span.split())
+        if len(normalize(span)) < MIN_QUOTE_CHARS or not _in_quote(span, target["quote"]):
+            raise QuizInvalid("quote_span is not in the quote")
+        if _in_quote(changed_to, span) if normalize(changed_to) else changed_to.lower() in span.lower():
+            raise QuizInvalid("the altered fact is supported by the quote")
+        out[rw.id] = {
+            "altered": altered,
+            "changed": " ".join(rw.changed.split())[:300],
+            "changed_from": changed_from,
+            "changed_to": changed_to,
+            "quote_span": span,
+        }
+    if set(out) != set(by_id):
         raise QuizInvalid("missing")
     return out
 
@@ -111,7 +160,14 @@ def build(
                 "altered": is_wrong,
                 "original": c["text"],
                 "changed": rewrites[c["id"]]["changed"] if is_wrong else None,
-                "evidence": {"page": c["page"], "quote": c["quote"], "verified": True},
+                "changed_from": rewrites[c["id"]]["changed_from"] if is_wrong else None,
+                "changed_to": rewrites[c["id"]]["changed_to"] if is_wrong else None,
+                "evidence": {
+                    "page": c["page"],
+                    "quote": c["quote"],
+                    "verified": True,
+                    **({"quote_span": rewrites[c["id"]]["quote_span"]} if is_wrong else {}),
+                },
                 "source": c["source"],
             }
         )
@@ -135,6 +191,8 @@ def score(q: dict[str, Any], picks: list[QuizPick]) -> dict[str, Any]:
                 "page_ok": (page == it["evidence"]["page"]) if selected and it["altered"] else None,
                 "original": it["original"] if it["altered"] else None,
                 "changed": it["changed"],
+                "changed_from": it.get("changed_from"),
+                "changed_to": it.get("changed_to"),
                 "evidence": it["evidence"] if it["altered"] else None,
             }
         )

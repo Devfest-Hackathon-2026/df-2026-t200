@@ -144,6 +144,14 @@ class QuizTooSmall(Exception):
     """根拠を照合できた項目が少なく、問題を作れない。"""
 
 
+class QuizNotAnswered(Exception):
+    """今の問題にまだ回答していない（答える前に作り直すと、変わった文から誤りが分かってしまう）。"""
+
+
+class QuizBusy(Exception):
+    """この論文の問題を作っている最中。"""
+
+
 class QuizNotFound(Exception):
     """問題が無い、または新しい問題に置き換わっている。"""
 
@@ -187,6 +195,8 @@ class PaperService:
         self.retry_limiter = RateLimiter(config.RETRY_RATE_PER_MIN, 60)
         self.quiz_limiter = RateLimiter(config.QUIZ_RATE_PER_MIN, 60)
         self._rng = rng or random.SystemRandom()
+        self._quiz_making: set[str] = set()  # 問題を作っている最中の論文（同じ論文の同時の作成で上限を二重に使わない）
+        self._quiz_making_lock = threading.Lock()
         # サービス全体の上限（論文を増やしても回避できない）
         self.ask_global_limiter = RateLimiter(config.ASK_GLOBAL_PER_MIN, 60)
         self.upload_quota = DailyQuota("uploads", config.MAX_UPLOADS_PER_DAY, directory=config.QUOTA_DIR)
@@ -362,13 +372,26 @@ class PaperService:
         existing = raw.get("quiz")
         if existing and not force:
             return quiz.public_view(existing)
+        if existing and existing.get("submitted_at") is None:
+            raise QuizNotAnswered
+        with self._quiz_making_lock:
+            if paper_id in self._quiz_making:
+                raise QuizBusy
+            self._quiz_making.add(paper_id)
+        try:
+            return self._make_quiz(paper, existing)
+        finally:
+            with self._quiz_making_lock:
+                self._quiz_making.discard(paper_id)
+
+    def _make_quiz(self, paper: Paper, existing: dict[str, Any] | None) -> dict[str, Any]:
         seq = (existing or {}).get("seq", 0) + 1
         # デモモードは問題をいつも同じにする（e2e のため）。回数ごとには変える
         rng = random.Random(seq) if paper.demo else self._rng
-        pool = quiz.candidates(paper.results, rng)
+        pool = quiz.candidates(paper.results, rng, require_overlap=not paper.demo)
         if len(pool) < quiz.MIN_SENTENCES:
             raise QuizTooSmall
-        if not self.quiz_limiter.allow(paper_id):
+        if not self.quiz_limiter.allow(paper.id):
             raise RateLimited
         if not self.quiz_quota.take():
             raise QuotaExceeded
@@ -377,8 +400,18 @@ class PaperService:
         targets = [{"id": c["id"], "text": c["text"], "quote": c["quote"]} for c in picked if c["id"] in wrong_ids]
         rewrites = self._rewrite(paper, targets)
         record = quiz.build(picked, wrong_ids, rewrites, rng, seq, store.now())
-        store.update(paper_id, quiz=record)
-        return quiz.public_view(record)
+        saved: dict[str, Any] = {}
+
+        def put(p: dict[str, Any]) -> dict[str, Any] | None:
+            # 読んだときと同じ seq のときだけ書く（compare-and-set）。先に別の要求が保存していたら、そちらを残す
+            current = p.get("quiz")
+            if current is not None and current.get("seq", 0) != seq - 1:
+                saved.update(current)
+                return None
+            return {**p, "quiz": record}
+
+        store.mutate(paper.id, put)
+        return quiz.public_view(saved or record)
 
     def _rewrite(self, paper: Paper, targets: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
         """書き換えを作らせて検証する。使えない出力は捨てて、もう1回だけ作り直す。"""
