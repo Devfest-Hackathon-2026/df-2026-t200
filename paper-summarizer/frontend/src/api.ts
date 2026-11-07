@@ -98,15 +98,38 @@ async function json<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>
 }
 
+const CLIENT_ID_KEY = 'client-id'
+const CLIENT_ID_FORMAT = /^[A-Za-z0-9_-]{16,64}$/
+let memoryClientId: string | null = null
+
+/**
+ * このブラウザのランダムな ID。サーバーは論文の一覧を、この ID でアップロードした論文だけに絞る
+ * （ログインがないので、ほかの人の論文が一覧に出ないようにする）。保存できない環境ではこのタブの間だけ使う
+ */
+export function clientId(): string {
+  try {
+    const stored = localStorage.getItem(CLIENT_ID_KEY)
+    if (stored && CLIENT_ID_FORMAT.test(stored)) return stored
+    const created = crypto.randomUUID()
+    localStorage.setItem(CLIENT_ID_KEY, created)
+    return created
+  } catch {
+    memoryClientId ??= crypto.randomUUID()
+    return memoryClientId
+  }
+}
+
+const withClientId = () => ({ 'X-Client-Id': clientId() })
+
 export const api = {
   health: () => fetch('/api/health').then((r) => json<Health>(r)),
-  list: () => fetch('/api/papers').then((r) => json<PaperSummary[]>(r)),
+  list: () => fetch('/api/papers', { headers: withClientId() }).then((r) => json<PaperSummary[]>(r)),
   get: (id: string) => fetch(`/api/papers/${id}`).then((r) => json<Paper>(r)),
   upload: (file: File, level: string) => {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('level', level)
-    return fetch('/api/papers', { method: 'POST', body: fd }).then((r) => json<{ id: string; reused: boolean }>(r))
+    return fetch('/api/papers', { method: 'POST', body: fd, headers: withClientId() }).then((r) => json<{ id: string; reused: boolean }>(r))
   },
   retry: (id: string) => fetch(`/api/papers/${id}/retry`, { method: 'POST' }).then((r) => json<{ ok: boolean }>(r)),
   ask: (id: string, question: string, currentStep: number) =>

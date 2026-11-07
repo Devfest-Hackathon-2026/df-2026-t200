@@ -38,3 +38,14 @@ STALE_AFTER_SEC = int(os.getenv("STALE_AFTER_SEC", "600"))
 # /ask と /retry の論文ごとの回数制限（1分あたり）。/ask は毎回 PDF 全体を Gemini に送るので費用に直結する。
 ASK_RATE_PER_MIN = int(os.getenv("ASK_RATE_PER_MIN", "10"))
 RETRY_RATE_PER_MIN = int(os.getenv("RETRY_RATE_PER_MIN", "3"))
+
+# サービス全体の上限（認証がないので、論文ごとの制限だけでは論文を増やして回避できる）。
+# 1日の上限は直近24時間の回数で数え、QUOTA_DIR に残す。0 にするとその操作を止められる（緊急停止）。
+QUOTA_DIR = DATA_DIR / "quota"
+QUOTA_DIR.mkdir(parents=True, exist_ok=True)
+MAX_UPLOADS_PER_DAY = int(os.getenv("MAX_UPLOADS_PER_DAY", "100"))
+MAX_ANALYSES_PER_DAY = int(os.getenv("MAX_ANALYSES_PER_DAY", "30"))  # 解析と再解析（Gemini を3回呼ぶ）
+MAX_ASKS_PER_DAY = int(os.getenv("MAX_ASKS_PER_DAY", "150"))  # 質問（毎回 PDF 全体を送る）
+ASK_GLOBAL_PER_MIN = int(os.getenv("ASK_GLOBAL_PER_MIN", "20"))
+# 同時に受け付けるアップロード（PDF をメモリに読むので、1GiB のインスタンスが溢れないようにする）
+MAX_CONCURRENT_UPLOADS = int(os.getenv("MAX_CONCURRENT_UPLOADS", "3"))

@@ -31,6 +31,35 @@ describe('api', () => {
     await expect(api.retry('x')).rejects.toThrow('500 Internal Server Error')
   })
 
+  it('sends the same browser id when listing and uploading, so the list shows only papers from this browser', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse([])))
+    await api.list()
+    await api.upload(new File(['%PDF'], 'a.pdf'), 'grad')
+    const ids = spy.mock.calls.map(([, init]) => new Headers((init as RequestInit).headers).get('X-Client-Id'))
+    expect(ids[0]).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
+    expect(ids[1]).toBe(ids[0])
+    expect(localStorage.getItem('client-id')).toBe(ids[0])
+  })
+
+  it('reuses a stored browser id and replaces a malformed one', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse([])))
+    localStorage.setItem('client-id', 'stored-id-0000000000')
+    await api.list()
+    expect(new Headers((spy.mock.calls[0][1] as RequestInit).headers).get('X-Client-Id')).toBe('stored-id-0000000000')
+    localStorage.setItem('client-id', 'bad id')
+    await api.list()
+    expect(new Headers((spy.mock.calls[1][1] as RequestInit).headers).get('X-Client-Id')).not.toBe('bad id')
+  })
+
+  it('still sends an id when storage is unavailable', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse([])))
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    await api.list()
+    expect(new Headers((spy.mock.calls[0][1] as RequestInit).headers).get('X-Client-Id')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
+  })
+
   it('upload sends multipart form with file and level', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ id: 'a', reused: false }))
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })

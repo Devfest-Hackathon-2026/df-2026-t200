@@ -4,9 +4,11 @@ import pytest
 
 from app import config, store
 
+OWNER = "o" * 32
+
 
 def _paper(pid, **kw):
-    base = {"id": pid, "filename": "a.pdf", "status": "queued", "created_at": store.now(), "results": {}}
+    base = {"id": pid, "filename": "a.pdf", "status": "queued", "created_at": store.now(), "results": {}, "owner": OWNER}
     return {**base, **kw}
 
 
@@ -43,7 +45,7 @@ def test_list_papers_sorted_newest_first():
     a, b = store.new_id(), store.new_id()
     store.save(_paper(a, created_at="2026-11-05T00:00:00+00:00"))
     store.save(_paper(b, created_at="2026-11-06T00:00:00+00:00", results={"step1": {"title": "T"}}))
-    items = store.list_papers()
+    items = store.list_papers(OWNER)
     assert [i["id"] for i in items] == [b, a]
     assert items[0]["title"] == "T"
     assert items[1]["title"] is None
@@ -152,7 +154,7 @@ def test_list_and_find_skip_corrupt_json():
     store.save(_paper(pid, sha256="h", level="grad", status="done"))
     (config.PAPER_DIR / "0123456789abcdef.json").write_text("{broken", encoding="utf-8")
     (config.PAPER_DIR / "fedcba9876543210.json").write_text('{"id": "fedcba9876543210"}', encoding="utf-8")
-    assert [p["id"] for p in store.list_papers()] == [pid]
+    assert [p["id"] for p in store.list_papers(OWNER)] == [pid]
     assert store.find_by_hash("h", "grad") == pid
 
 

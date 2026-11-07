@@ -83,7 +83,7 @@ deploy_api() {
     --allow-unauthenticated \
     --execution-environment gen2 \
     --min-instances "${MIN_INSTANCES:-0}" --max-instances 1 \
-    --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 \
+    --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 --concurrency 10 \
     --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,DATA_DIR=/data" \
     --clear-volumes --clear-volume-mounts \
     --add-volume "name=data,type=cloud-storage,bucket=${BUCKET}" \
