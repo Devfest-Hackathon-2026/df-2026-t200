@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { Flow, FlowKind, FlowNode } from '../api'
-import { FLOW_NODE_H, FLOW_NODE_W, edgeKey, flowEdgePath, layoutFlow } from './flowLayout'
+import { FLOW_EDGE_LABEL_MAX, FLOW_NODE_H, FLOW_NODE_W, edgeKey, flowEdgePath, layoutFlow } from './flowLayout'
 
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)'
 const KIND_LABEL: Record<FlowKind, string> = { input: '入力', process: '処理', output: '出力' }
-const EDGE_LABEL_MAX = 8
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => window.matchMedia?.(REDUCED_QUERY).matches ?? false)
@@ -125,7 +124,7 @@ export function FlowDiagram({
                       textAnchor="middle"
                     >
                       <title>{e.label}</title>
-                      {clip(e.label, EDGE_LABEL_MAX)}
+                      {clip(e.label, FLOW_EDGE_LABEL_MAX)}
                     </text>
                   )}
                   {active && !reduced && (
