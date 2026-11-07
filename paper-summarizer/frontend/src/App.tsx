@@ -181,7 +181,8 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
           <div className="step-scroll" id="step-panel" role="tabpanel" aria-labelledby={`step-tab-${step}`} tabIndex={0}>
             <ErrorBoundary key={step} title="このStepを表示できませんでした">
               {step === 1 && (r.step1 ? <Step1Map data={r.step1} paperId={id} /> : <Pending working={working} label="前提知識マップ" />)}
-              {step === 2 && (r.step2 ? <Step2Walkthrough data={r.step2} /> : <Pending working={working} label="手法の流れの解説" />)}
+              {step === 2 &&
+                (r.step2 ? <Step2Walkthrough data={r.step2} paperId={id} /> : <Pending working={working} label="手法の流れの解説" />)}
               {step === 3 &&
                 (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
             </ErrorBoundary>
