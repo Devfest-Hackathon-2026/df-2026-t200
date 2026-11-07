@@ -95,4 +95,15 @@ describe('QaPanel', () => {
     expect(scrollTo).toHaveBeenCalledTimes(1)
     vi.unstubAllGlobals()
   })
+
+  it('renders bold and inline code in an answer as elements, and HTML as text', async () => {
+    const text = '**重要** と `softmax` <img src=x onerror=alert(1)> **閉じない'
+    render(<QaPanel paperId="pid" initial={[user, { ...answer, text }]} currentStep={1} />)
+    await userEvent.click(screen.getByRole('button', { name: /質問と回答/ }))
+    const el = document.querySelectorAll('.msg.assistant .msg-text')[0] as HTMLElement
+    expect(el.querySelector('strong')).toHaveTextContent('重要')
+    expect(el.querySelector('code')).toHaveTextContent('softmax')
+    expect(el.querySelector('img')).toBeNull()
+    expect(el).toHaveTextContent('重要 と softmax <img src=x onerror=alert(1)> **閉じない')
+  })
 })
