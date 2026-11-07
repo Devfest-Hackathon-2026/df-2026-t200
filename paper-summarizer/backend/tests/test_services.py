@@ -8,6 +8,7 @@ import pytest
 from make_sample_pdf import make_pdf
 
 from app import config, gemini, mock, pdf_utils, services, store
+from app.schemas import Paper
 from app.services import AskFailed, DemoAnalyzer, GeminiAnalyzer, PaperService
 
 
@@ -221,3 +222,30 @@ def test_is_stale_handles_missing_or_bad_timestamp():
     assert services.is_stale({"updated_at": None, "created_at": None}) is True
     assert services.is_stale({"updated_at": "not a date"}) is True
     assert services.is_stale({"updated_at": store.now()}) is False
+
+
+def test_gemini_analyzer_passes_paper_lang(monkeypatch):
+    seen = []
+    fake_mod = SimpleNamespace(
+        step1=lambda pdf, level, **kw: seen.append(("step1", level, kw["lang"])) or {},
+        step2=lambda pdf, level, s1, **kw: seen.append(("step2", level, kw["lang"])) or {},
+        step3=lambda pdf, level, s1, **kw: seen.append(("step3", level, kw["lang"])) or {},
+        ask=lambda pdf, level, q, h, c, **kw: seen.append(("ask", level, kw["lang"])) or {},
+    )
+    analyzer = GeminiAnalyzer()
+    monkeypatch.setattr(analyzer, "_gemini", lambda: fake_mod)
+    monkeypatch.setattr(analyzer, "_cli", lambda: None)
+    src = SimpleNamespace(pdf_bytes=b"", paper=SimpleNamespace(level="grad", lang="en"))
+    analyzer.step1(src)
+    analyzer.step2(src, {})
+    analyzer.step3(src, {})
+    analyzer.ask(src, "q", [], None)
+    assert seen == [(n, "grad", "en") for n in ("step1", "step2", "step3", "ask")]
+
+
+def test_create_stores_lang_and_old_records_load_as_ja():
+    svc = PaperService(analyzers={True: FakeAnalyzer(), False: FakeAnalyzer()}, starter=lambda _pid: None)
+    data = make_pdf(3)
+    pid, _ = svc.create(data=data, pages=pdf_utils.extract_pages(data), filename="x.pdf", level="grad", lang="en")
+    assert store.load(pid)["lang"] == "en"
+    assert Paper.model_validate({"id": "x", "filename": "f"}).lang == "ja"

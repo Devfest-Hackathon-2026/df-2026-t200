@@ -165,6 +165,7 @@ class Paper(BaseModel):
     filename: str
     sha256: str = ""
     level: str = "undergrad"
+    lang: str = "ja"
     page_count: int = 0
     status: str = "queued"
     error: str | None = None

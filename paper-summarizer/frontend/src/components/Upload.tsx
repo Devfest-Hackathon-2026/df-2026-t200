@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type Health, type Level, type PaperSummary } from '../api'
+import { api, type Health, type Lang, type Level, type PaperSummary } from '../api'
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '解析待ち',
@@ -57,7 +57,8 @@ function PaperCard({ paper, onOpen }: { paper: PaperSummary; onOpen: (id: string
 }
 
 export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id: string) => void }) {
-  const [level, setLevel] = useState<'undergrad' | 'grad'>('undergrad')
+  const [level, setLevel] = useState<Level>('undergrad')
+  const [lang, setLang] = useState<Lang>('ja')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
@@ -81,7 +82,7 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
     busyRef.current = true
     setBusy(true)
     try {
-      const res = await api.upload(file, level)
+      const res = await api.upload(file, level, lang)
       onOpen(res.id)
     } catch (e) {
       setError(`アップロードできませんでした。${(e as Error).message}`)
@@ -121,6 +122,22 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
             <label className={level === 'grad' ? 'checked' : ''}>
               <input type="radio" name="level" checked={level === 'grad'} onChange={() => setLevel('grad')} disabled={busy} />
               大学院生向け
+            </label>
+          </div>
+        </div>
+
+        <div className="level" role="radiogroup" aria-labelledby="lang-label">
+          <span className="level-label" id="lang-label">
+            解説の言語
+          </span>
+          <div className="level-options">
+            <label className={lang === 'ja' ? 'checked' : ''}>
+              <input type="radio" name="lang" checked={lang === 'ja'} onChange={() => setLang('ja')} disabled={busy} />
+              日本語
+            </label>
+            <label className={lang === 'en' ? 'checked' : ''}>
+              <input type="radio" name="lang" checked={lang === 'en'} onChange={() => setLang('en')} disabled={busy} />
+              English
             </label>
           </div>
         </div>

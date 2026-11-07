@@ -43,8 +43,9 @@ def client(service):
 CLIENT = {"X-Client-Id": "test-client-0000000001"}
 
 
-def _upload(client, data, level="undergrad", name="paper.pdf"):
-    return client.post("/api/papers", files={"file": (name, data, "application/pdf")}, data={"level": level}, headers=CLIENT)
+def _upload(client, data, level="undergrad", name="paper.pdf", lang=None):
+    form = {"level": level} if lang is None else {"level": level, "lang": lang}
+    return client.post("/api/papers", files={"file": (name, data, "application/pdf")}, data=form, headers=CLIENT)
 
 
 def _wait_done(client, pid, timeout=10.0):
@@ -386,3 +387,28 @@ def test_get_pdf_redirects_when_storage_gives_url(client, sample_pdf, monkeypatc
     res = client.get(f"/api/papers/{pid}/pdf", follow_redirects=False)
     assert res.status_code in (302, 307)
     assert res.headers["location"] == "https://storage.example/signed"
+
+
+def test_upload_rejects_invalid_lang(client, sample_pdf):
+    res = _upload(client, sample_pdf, lang="fr")
+    assert res.status_code == 400
+    assert "lang" in res.json()["detail"]
+
+
+def test_upload_defaults_to_japanese_and_stores_lang(client, sample_pdf):
+    pid = _upload(client, sample_pdf).json()["id"]
+    _wait_done(client, pid)
+    assert client.get(f"/api/papers/{pid}").json()["lang"] == "ja"
+    pid_en = _upload(client, sample_pdf, lang="en").json()["id"]
+    _wait_done(client, pid_en)
+    assert client.get(f"/api/papers/{pid_en}").json()["lang"] == "en"
+    assert {p["id"]: p["lang"] for p in client.get("/api/papers", headers=CLIENT).json()} == {pid: "ja", pid_en: "en"}
+
+
+def test_reuse_does_not_cross_languages(client, sample_pdf):
+    pid = _upload(client, sample_pdf, lang="ja").json()["id"]
+    _wait_done(client, pid)
+    en = _upload(client, sample_pdf, lang="en").json()
+    assert en["reused"] is False and en["id"] != pid
+    _wait_done(client, en["id"])
+    assert _upload(client, sample_pdf, lang="en").json()["reused"] is True

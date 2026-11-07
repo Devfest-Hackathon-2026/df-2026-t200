@@ -32,11 +32,16 @@ LEVELS = {
     "grad": "修士課程の大学院生。基礎的な用語の説明は簡潔にし、手法の要点と位置付けを重視する",
 }
 
+LANGS = {
+    "ja": "日本語",
+    "en": "英語（English）。見出し・説明・回答はすべて英語で書く",
+}
+
 SYSTEM = """あなたは大学・大学院生が英語の学術論文を自力で読めるようになるための学習サポーターです。
 要約で読んだ気にさせるのではなく、学生が原文に戻って確かめられるように導いてください。
 
 厳守事項:
-- 出力は日本語。ただし論文タイトル・引用（quote）・数式は原文のまま。
+- 出力は{lang}。ただし論文タイトル・引用（quote）・数式は、出力言語にかかわらず論文の原文のまま（翻訳しない）。
 - page は PDF の物理ページ番号（1始まり）。論文に印字されたページ番号ではない。
 - quote は該当ページから一字一句そのまま抜き出す。言い換えや要約を quote に入れない。
 - 論文に書かれていないことを、論文の主張として書かない。
@@ -63,12 +68,12 @@ def _pdf_part(pdf_bytes: bytes) -> types.Part:
     return types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
 
 
-def _generate(model: str, contents: list[Any], schema: type, level: str, cli: genai.Client | None = None) -> dict[str, Any]:
+def _generate(model: str, contents: list[Any], schema: type, level: str, cli: genai.Client | None = None, lang: str = "ja") -> dict[str, Any]:
     resp = (cli or client()).models.generate_content(
         model=model,
         contents=contents,
         config=types.GenerateContentConfig(
-            system_instruction=SYSTEM.format(level=LEVELS.get(level, LEVELS["undergrad"])),
+            system_instruction=SYSTEM.format(level=LEVELS.get(level, LEVELS["undergrad"]), lang=LANGS.get(lang, LANGS["ja"])),
             response_mime_type="application/json",
             response_schema=schema,
             temperature=0.2,
@@ -81,17 +86,17 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
     return schema.model_validate_json(resp.text).model_dump(mode="json")
 
 
-def step1(pdf_bytes: bytes, level: str, *, cli: genai.Client | None = None) -> dict[str, Any]:
+def step1(pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
     prompt = """この論文について「Step 1: 前提知識マップ」を作ってください。
 - summary はちょうど3項目: 何の問題を扱うか / どう解いたか / 何が分かったか（各1〜2文）
 - concepts は、この論文を読むのに必要な前提知識。論文内で定義される新概念ではなく、読者が事前に知っておくべきもの。
   depends_on で「AはBを知らないと分からない」という依存関係を表す（循環させない）。
 - sections は論文の節構成とページ範囲。
 - reading_order は初めて読む学生が効率よく理解できる読む順番。"""
-    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step1, level, cli)
+    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step1, level, cli, lang)
 
 
-def step2(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, cli: genai.Client | None = None) -> dict[str, Any]:
+def step2(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
     context = json.dumps({"title": s1.get("title"), "summary": s1.get("summary"), "sections": s1.get("sections")}, ensure_ascii=False)
     prompt = f"""この論文の提案手法について「Step 2: コアロジック＆図表連動ウォークスルー」を作ってください。
 Step 1 の結果{DOC_RULE}:
@@ -102,10 +107,10 @@ Step 1 の結果{DOC_RULE}:
   図表・数式が無い段階では空配列でよい。同じ図表を複数段階に重複させない。
 - 数式の latex は KaTeX で描画できる記法で、symbols で各記号の意味と定義されているページを示す。
 - 実験結果の主要な図表（性能比較の表など）は最後の段階に含める。"""
-    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli)
+    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli, lang)
 
 
-def step3(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, cli: genai.Client | None = None) -> dict[str, Any]:
+def step3(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
     context = json.dumps({"title": s1.get("title"), "summary": s1.get("summary")}, ensure_ascii=False)
     prompt = f"""この論文について「Step 3: 批判的思考チェック」を作ってください。
 Step 1 の結果{DOC_RULE}:
@@ -117,14 +122,21 @@ Step 1 の結果{DOC_RULE}:
   あなたの推論による指摘は origin=ai_inference とし、論文の主張であるかのように書かない。
 - alternatives: 同じ課題に対する別のアプローチ（先行研究や別の解き方）と、提案手法との比較。
 - likely_questions: 輪講・ゼミで聞かれそうな質問と、答えるためにどこを読めばよいかのヒント。"""
-    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step3, level, cli)
+    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step3, level, cli, lang)
 
 
 STEP_NAMES = {1: "前提知識マップ", 2: "コアロジック＆図表連動ウォークスルー", 3: "批判的思考チェック"}
 
 
 def ask(
-    pdf_bytes: bytes, level: str, question: str, history: list[dict[str, Any]], current_step: int | None, *, cli: genai.Client | None = None
+    pdf_bytes: bytes,
+    level: str,
+    question: str,
+    history: list[dict[str, Any]],
+    current_step: int | None,
+    *,
+    lang: str = "ja",
+    cli: genai.Client | None = None,
 ) -> dict[str, Any]:
     lines = []
     for m in history[-8:]:
@@ -141,4 +153,4 @@ def ask(
 - 論文に書かれている内容で答えられる場合は source=paper とし、evidence に原文を引用する。
 - 論文外の一般知識で補った場合は source=general_knowledge とし、その旨が分かるように答える。
 - 論文に記載がなく答えられない場合は source=not_in_paper とし、推測で埋めない。"""
-    return _generate(config.QA_MODEL, [_pdf_part(pdf_bytes), prompt], Answer, level, cli)
+    return _generate(config.QA_MODEL, [_pdf_part(pdf_bytes), prompt], Answer, level, cli, lang)

@@ -77,20 +77,24 @@ def list_papers(response: Response, client_id: ClientId = None) -> list[dict[str
 # PDF の解析・ハッシュ計算・ファイル書き込みはすべて同期処理なので、普通の def にして
 # FastAPI のスレッドプールで実行させる（async def だと処理中はほかのリクエストがすべて止まる）。
 @app.post("/api/papers")
-def upload(service: Service, file: UploadFile = File(...), level: str = Form("undergrad"), client_id: ClientId = None) -> dict[str, Any]:
+def upload(
+    service: Service, file: UploadFile = File(...), level: str = Form("undergrad"), lang: str = Form("ja"), client_id: ClientId = None
+) -> dict[str, Any]:
     if level not in ("undergrad", "grad"):
         raise HTTPException(400, "level は undergrad か grad を指定してください")
+    if lang not in ("ja", "en"):
+        raise HTTPException(400, "lang は ja か en を指定してください")
     if not _upload_slots.acquire(blocking=False):
         raise HTTPException(503, "アップロードが混み合っています。少し待ってからもう一度お試しください。")
     try:
         if not service.upload_quota.take():
             raise HTTPException(429, QUOTA_MESSAGE)
-        return _process_upload(service, file, level, store.owner_of(client_id))
+        return _process_upload(service, file, level, lang, store.owner_of(client_id))
     finally:
         _upload_slots.release()
 
 
-def _process_upload(service: PaperService, file: UploadFile, level: str, owner: str | None) -> dict[str, Any]:
+def _process_upload(service: PaperService, file: UploadFile, level: str, lang: str, owner: str | None) -> dict[str, Any]:
     data = file.file.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
     if len(data) > config.MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(413, f"ファイルサイズの上限は {config.MAX_UPLOAD_MB}MB です")
@@ -113,6 +117,7 @@ def _process_upload(service: PaperService, file: UploadFile, level: str, owner: 
             pages=pages,
             filename=(file.filename or "paper.pdf")[:200],
             level=level,
+            lang=lang,
             sha256=hashlib.sha256(data).hexdigest(),
             owner=owner,
         )

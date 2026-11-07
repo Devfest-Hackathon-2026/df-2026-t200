@@ -61,6 +61,8 @@ export type Paper = {
   id: string
   filename: string
   level: 'undergrad' | 'grad'
+  /** 出力言語。古い記録では無いことがあり、その場合は日本語 */
+  lang?: 'ja' | 'en'
   page_count: number
   status: Status
   error: string | null
@@ -70,6 +72,7 @@ export type Paper = {
 }
 
 export type Level = Paper['level']
+export type Lang = NonNullable<Paper['lang']>
 /** 一覧の1件。level は一覧 API が返す場合だけ入る（古いバックエンドでは無い） */
 export type PaperSummary = { id: string; filename: string; title: string | null; status: Status; created_at: string; level?: Level }
 export type Health = { demo_mode: boolean; backend: string; analysis_model: string; max_upload_mb: number }
@@ -125,10 +128,11 @@ export const api = {
   health: () => fetch('/api/health').then((r) => json<Health>(r)),
   list: () => fetch('/api/papers', { headers: withClientId() }).then((r) => json<PaperSummary[]>(r)),
   get: (id: string) => fetch(`/api/papers/${id}`).then((r) => json<Paper>(r)),
-  upload: (file: File, level: string) => {
+  upload: (file: File, level: string, lang: Lang = 'ja') => {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('level', level)
+    fd.append('lang', lang)
     return fetch('/api/papers', { method: 'POST', body: fd, headers: withClientId() }).then((r) => json<{ id: string; reused: boolean }>(r))
   },
   retry: (id: string) => fetch(`/api/papers/${id}/retry`, { method: 'POST' }).then((r) => json<{ ok: boolean }>(r)),

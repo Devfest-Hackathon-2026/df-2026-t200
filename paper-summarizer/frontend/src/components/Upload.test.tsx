@@ -16,8 +16,30 @@ describe('Upload', () => {
     await userEvent.click(screen.getByLabelText('大学院生向け'))
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
     await userEvent.upload(fileInput(container), file)
-    expect(upload).toHaveBeenCalledWith(file, 'grad')
+    expect(upload).toHaveBeenCalledWith(file, 'grad', 'ja')
     expect(onOpen).toHaveBeenCalledWith('new')
+  })
+
+  it('uploads with English output when chosen', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue([])
+    const upload = vi.spyOn(api, 'upload').mockResolvedValue({ id: 'new', reused: false })
+    const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
+    await userEvent.click(screen.getByLabelText('English'))
+    const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
+    await userEvent.upload(fileInput(container), file)
+    expect(upload).toHaveBeenCalledWith(file, 'undergrad', 'en')
+  })
+
+  it('offers a language radio group, Japanese by default, usable with the keyboard', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue([])
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    const group = screen.getByRole('radiogroup', { name: '解説の言語' })
+    expect(group).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: '日本語' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'English' })).not.toBeChecked()
+    screen.getByRole('radio', { name: 'English' }).focus()
+    await userEvent.keyboard(' ')
+    expect(screen.getByRole('radio', { name: 'English' })).toBeChecked()
   })
 
   it('rejects files over the size limit before uploading', async () => {
