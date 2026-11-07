@@ -100,9 +100,46 @@ class Stage(BaseModel):
     equations: list[Equation]
 
 
+class FlowKind(str, Enum):
+    input = "input"
+    process = "process"
+    output = "output"
+
+
+class FlowNode(BaseModel):
+    id: str = Field(description="英小文字とハイフンのみの短いID（例: embed）")
+    label: str = Field(description="ノードの名前（短く。20字程度まで）")
+    kind: FlowKind
+    shape: str | None = Field(description="テンソルの形など。論文に書かれているときだけ（根拠を付ける）。なければ null")
+    evidence: list[Evidence] = Field(description="このノードの根拠となる本文。shape を書くときは必須")
+
+
+class FlowEdge(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from", description="始点ノードの id")
+    to: str = Field(description="終点ノードの id")
+    label: str = Field(description="流れるもの（例: Q, K, V）。なければ空文字")
+
+
+class FlowFrame(BaseModel):
+    stage_index: int = Field(description="対応する stages の番号（0始まり）。stages と1対1")
+    active_nodes: list[str] = Field(description="このコマで扱うノードの id")
+    active_edges: list[str] = Field(description='このコマで流れる矢印。"始点id->終点id" の形')
+    caption: str = Field(description="このコマの一言説明")
+    evidence: list[Evidence]
+
+
+class Flow(BaseModel):
+    nodes: list[FlowNode] = Field(description="3〜8 個")
+    edges: list[FlowEdge]
+    frames: list[FlowFrame] = Field(description="stages と同じ数。stage_index の順")
+
+
 class Step2(BaseModel):
     overview: str = Field(description="提案手法の流れを2文で")
     stages: list[Stage] = Field(description="入力 → 処理 → 出力 の順に 3〜6 段階")
+    flow: Flow | None = Field(default=None, description="手法の流れ図のデータ。作れないときは null")
 
 
 # ---------- Step 3: 批判的思考チェック ----------
