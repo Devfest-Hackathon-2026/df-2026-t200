@@ -2,7 +2,7 @@ name: Deploy
 
 # main への push で CI が成功したら、Cloud Run と Firebase Hosting にデプロイする（CD）。
 # GCP へは鍵ファイルを使わず、Workload Identity 連携で入る。設定は paper-summarizer/deploy.sh の cd-setup で作る。
-# GCP 側の条件で、このリポジトリの main ブランチから動いたワークフローしかデプロイ用アカウントになれない。
+# GCP 側の条件で、このリポジトリの main ブランチの、このワークフローからしかデプロイ用アカウントになれない。
 on:
   workflow_run:
     workflows: [CI]
@@ -28,9 +28,13 @@ env:
 jobs:
   deploy:
     name: deploy (Cloud Run + Firebase Hosting)
+    # main の push で CI が通ったとき（このリポジトリのコミットだけ）か、main からの手動実行
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -41,22 +45,41 @@ jobs:
         with:
           # CI が通ったコミットそのものをデプロイする
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      - uses: google-github-actions/auth@v3.0.0
-        with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.DEPLOY_SA }}
-      - uses: google-github-actions/setup-gcloud@v3.0.1
+      - name: Skip if this is not the latest main
+        # 古いコミットの CI を再実行したときに、古い版を本番に出さない
+        id: latest
+        run: |
+          head=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}" refs/heads/main | cut -f1)
+          if [ "$head" = "$(git rev-parse HEAD)" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "main は $head に進んでいるのでデプロイしない"; fi
+
+      # 依存パッケージのスクリプトにデプロイ用の認証情報を見せないよう、認証より前にビルドする
       - uses: actions/setup-node@v7
+        if: steps.latest.outputs.ok == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: paper-summarizer/frontend/package-lock.json
+      - name: Build web
+        if: steps.latest.outputs.ok == 'true'
+        working-directory: paper-summarizer/frontend
+        run: npm ci && npm run build
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: steps.latest.outputs.ok == 'true'
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        if: steps.latest.outputs.ok == 'true'
       - name: Deploy API (Cloud Run)
+        if: steps.latest.outputs.ok == 'true'
         # 「誰でも呼べる」設定は変えない（デプロイ用アカウントにその権限を渡していない）
         run: SKIP_INVOKER_IAM=1 ./deploy.sh api
       - name: Deploy web (Firebase Hosting)
-        run: ./deploy.sh web
+        if: steps.latest.outputs.ok == 'true'
+        run: SKIP_WEB_BUILD=1 ./deploy.sh web
       - name: Smoke test
+        if: steps.latest.outputs.ok == 'true'
         run: |
           curl -fsS "https://${PROJECT_ID}.web.app/api/health" | tee /dev/stderr | grep -q '"backend":"vertex"'
           curl -fsSI "https://${PROJECT_ID}.web.app/" | grep -qi '^cache-control: no-cache'

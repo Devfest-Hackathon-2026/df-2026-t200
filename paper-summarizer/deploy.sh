@@ -107,12 +107,16 @@ cd_setup() {
   if ! gc iam workload-identity-pools describe github --location global >/dev/null 2>&1; then
     gc iam workload-identity-pools create github --location global --display-name "GitHub Actions"
   fi
-  if ! gc iam workload-identity-pools providers describe github --location global --workload-identity-pool github >/dev/null 2>&1; then
-    gc iam workload-identity-pools providers create-oidc github \
-      --location global --workload-identity-pool github \
-      --issuer-uri https://token.actions.githubusercontent.com \
-      --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-      --attribute-condition "assertion.repository == '${repo}' && assertion.ref == 'refs/heads/main'"
+  # main ブランチの deploy.yml から動いたジョブだけを受け付ける（ほかのワークフローやブランチは認証で弾く）
+  local condition="assertion.repository == '${repo}' && assertion.ref == 'refs/heads/main' && assertion.job_workflow_ref == '${repo}/.github/workflows/deploy.yml@refs/heads/main'"
+  local provider_args=(--location global --workload-identity-pool github
+    --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref"
+    --attribute-condition "$condition")
+  if gc iam workload-identity-pools providers describe github --location global --workload-identity-pool github >/dev/null 2>&1; then
+    gc iam workload-identity-pools providers update-oidc github "${provider_args[@]}"
+  else
+    gc iam workload-identity-pools providers create-oidc github "${provider_args[@]}" \
+      --issuer-uri https://token.actions.githubusercontent.com
   fi
   retry gc iam service-accounts add-iam-policy-binding "$deployer" --role roles/iam.workloadIdentityUser \
     --member "principalSet://iam.googleapis.com/projects/${number}/locations/global/workloadIdentityPools/github/attribute.repository/${repo}" \
@@ -138,7 +142,7 @@ deploy_api() {
     --source backend \
     --region "$REGION" \
     --service-account "$SA_EMAIL" \
-    "${INVOKER_FLAG[@]}" \
+    ${INVOKER_FLAG[@]+"${INVOKER_FLAG[@]}"} \
     --execution-environment gen2 \
     --min-instances "${MIN_INSTANCES:-0}" --max-instances 1 \
     --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 --concurrency 20 \
@@ -151,7 +155,10 @@ deploy_api() {
 
 deploy_web() {
   echo "== フロントエンドをビルドして Firebase Hosting にデプロイ"
-  (cd frontend && npm ci && npm run build)
+  # CI では認証より前にビルドを済ませる（SKIP_WEB_BUILD=1）。依存パッケージのスクリプトに認証情報を見せないため
+  if [ "${SKIP_WEB_BUILD:-0}" != "1" ]; then
+    (cd frontend && npm ci && npm run build)
+  fi
   $FIREBASE deploy --only hosting --project "$PROJECT_ID" --non-interactive
   echo ""
   echo "  ▶ https://${PROJECT_ID}.web.app を開いてください"
