@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type Evidence, type FlowNode, type Stage, type Step2 } from '../api'
+import { api, type Equation, type Evidence, type FlowNode, type Stage, type Step2 } from '../api'
 import { EvidenceList, PageChip } from '../jump'
 import { useJump, type JumpFn, type JumpOptions } from '../jumpContext'
+import { conceptsOfEquation } from './equationLinks'
 import { FlowDiagram } from './FlowDiagram'
 import { Tex } from './Tex'
 
@@ -18,8 +19,22 @@ function jumpToStage(jump: JumpFn, stage: Stage | undefined, options?: JumpOptio
 /** 流れ図のコマ（段階と1対1）の根拠。流れ図がなければ undefined */
 const frameEvidenceAt = (data: Step2, k: number) => data.flow?.frames?.find((f) => f.stage_index === k)?.evidence
 
-export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: string }) {
-  const [i, setI] = useState(0)
+/** Step 1 の概念から開かれたとき、最初に見せる式の位置（段階の番号, その段階の中での式の番号） */
+export type EquationFocus = { stage: number; index: number }
+
+type Step2Props = {
+  data: Step2
+  paperId?: string
+  /** 式の「必要な前提」に名前を出すための Step 1 の概念 */
+  concepts?: { id: string; name: string }[]
+  onOpenConcept?: (id: string) => void
+  focus?: EquationFocus | null
+}
+
+export function Step2Walkthrough({ data, paperId, concepts, onOpenConcept, focus }: Step2Props) {
+  // 指された式が実在するときだけ、その段階から始める
+  const focusEq = focus ? data.stages[focus.stage]?.equations?.[focus.index] : undefined
+  const [i, setI] = useState(focusEq && focus ? focus.stage : 0)
   const jump = useJump()
   const stage = data.stages[i]
 
@@ -29,7 +44,11 @@ export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: str
   useEffect(() => {
     if (openedRef.current) return
     openedRef.current = true
+    // Step 1 の概念から来たときは、最初の段階ではなく指された式のページへ移る
+    if (focusEq) return jump(focusEq.page)
     jumpToStage(jump, data.stages[0], { switchView: false }, frameEvidenceAt(data, 0))
+    // focusEq は開いたときの 1 回だけ使う
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jump, data])
 
   // 学生が段階を移動したときは、その段階の根拠へ移動する（狭い画面では PDF を表示する）
@@ -116,6 +135,7 @@ export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: str
               <span className="label">式の意味</span>
               <span>{eq.plain_meaning}</span>
             </p>
+            {onOpenConcept && <EquationPrerequisites eq={eq} concepts={concepts} onOpen={onOpenConcept} />}
             {eq.symbols.length > 0 && (
               <table className="symbols">
                 <tbody>
@@ -146,6 +166,30 @@ export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: str
           </button>
         </div>
       </section>
+    </div>
+  )
+}
+
+/** 式に必要な前提知識へのリンク。Step 1 に無い id は出さない。1 つも無ければ何も出さない */
+function EquationPrerequisites({
+  eq,
+  concepts,
+  onOpen,
+}: {
+  eq: Equation
+  concepts?: { id: string; name: string }[]
+  onOpen: (id: string) => void
+}) {
+  const found = conceptsOfEquation(eq, concepts)
+  if (found.length === 0) return null
+  return (
+    <div className="chips" role="group" aria-label="この式に必要な前提">
+      <span className="chips-label">この式に必要な前提</span>
+      {found.map((c) => (
+        <button key={c.id} type="button" className="chip page" onClick={() => onOpen(c.id)}>
+          {c.name}
+        </button>
+      ))}
     </div>
   )
 }

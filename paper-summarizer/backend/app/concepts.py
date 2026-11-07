@@ -4,6 +4,7 @@ importance / category / origin / evidence は後から足した付加情報な�
 Step 1 全体は失敗させない。使えない項目だけ外し（既定値になる）、概念の名前や説明などの中核項目の不備は従来どおり失敗にする。
 """
 
+import copy
 from typing import Any
 
 from .schemas import Importance, Origin
@@ -71,3 +72,37 @@ def clean_concepts(step1: dict[str, Any]) -> dict[str, Any]:
     if drop:
         concepts = [{**c, "depends_on": [d for d in c.get("depends_on") or [] if d not in drop]} for c in concepts if c.get("id") not in drop]
     return {**step1, "concepts": concepts}
+
+
+def _each_equation(step2: dict[str, Any]):
+    """Step 2 の全段階の式（dict）を順に返す。形が違うものは飛ばす。"""
+    stages = step2.get("stages")
+    for st in stages if isinstance(stages, list) else []:
+        eqs = st.get("equations") if isinstance(st, dict) else None
+        for e in eqs if isinstance(eqs, list) else []:
+            if isinstance(e, dict):
+                yield e
+
+
+def repair_equation_concepts(raw: Any) -> Any:
+    """検証に失敗した Step 2 の出力から、式の concepts だけを直したコピーを返す（文字列でない要素は捨て、配列でなければ外す）。"""
+    if not isinstance(raw, dict) or not isinstance(raw.get("stages"), list):
+        return raw
+    out = copy.deepcopy(raw)
+    for e in _each_equation(out):
+        if "concepts" not in e:
+            continue
+        v = e["concepts"]
+        if isinstance(v, list):
+            e["concepts"] = [x for x in v if isinstance(x, str)]
+        else:
+            del e["concepts"]
+    return out
+
+
+def clean_equation_concepts(step2: dict[str, Any], valid_ids: set[str]) -> dict[str, Any]:
+    """式の concepts から、Step 1 に無い id と重複を捨てる。元のデータは変えず、新しい dict を返す。"""
+    out = copy.deepcopy(step2)
+    for e in _each_equation(out):
+        e["concepts"] = list(dict.fromkeys(c for c in e.get("concepts") or [] if c in valid_ids))
+    return out

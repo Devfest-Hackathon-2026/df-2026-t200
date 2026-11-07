@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api, ApiError } from './api'
@@ -108,6 +108,32 @@ describe('App', () => {
     expect(viewer.clearHighlight).toHaveBeenCalledTimes(1)
     expect(viewer.jumpTo).toHaveBeenCalledWith(2, 'we embed tokens')
     expect(viewer.clearHighlight.mock.invocationCallOrder[0]).toBeLessThan(viewer.jumpTo.mock.invocationCallOrder[0])
+  })
+
+  it('moves from an equation to its prerequisite concept in Step 1, and from the concept back to the equation page', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    localStorage.setItem(`conceptLevel:${paper.id}`, JSON.stringify('essential'))
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    render(<App />)
+    await screen.findByText('問題A')
+    await userEvent.click(screen.getByRole('tab', { name: /手法の流れと図表/ }))
+    const group = screen.getByRole('group', { name: 'この式に必要な前提' })
+    await userEvent.click(within(group).getByRole('button', { name: '期待値' }))
+    // Step 1 に戻り、隠れていた発展の概念を選べるよう「すべて」に切り替わる
+    expect(screen.getByRole('tab', { name: /前提知識マップ/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: 'すべて' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('heading', { level: 3, name: '期待値' })).toBeInTheDocument()
+    // 概念から式へ。式の根拠ページへ PDF が移る
+    await userEvent.click(screen.getByRole('button', { name: /Attention/ }))
+    viewer.jumpTo.mockClear()
+    await userEvent.click(screen.getByRole('button', { name: '式 (1)（p.3）' }))
+    expect(screen.getByRole('tab', { name: /手法の流れと図表/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('式 (1)')).toBeInTheDocument()
+    expect(viewer.jumpTo).toHaveBeenLastCalledWith(3, undefined)
+    // タブを自分で選び直したときは、前の移動の指定を引き継がない
+    await userEvent.click(screen.getByRole('tab', { name: /前提知識マップ/ }))
+    expect(screen.getByRole('heading', { level: 3, name: '内積' })).toBeInTheDocument()
   })
 
   it('keeps the explanation in view on narrow screens when Step 2 highlights its first stage', async () => {

@@ -168,6 +168,7 @@ def step2(pages: list[str]) -> dict[str, Any]:
                         "page": p(2),
                         "latex": r"\mathrm{Attention}(Q,K,V)=\mathrm{softmax}\left(\frac{QK^\top}{\sqrt{d_k}}\right)V",
                         "plain_meaning": "【デモ】クエリとキーの類似度で値を重み付き平均する。",
+                        "concepts": ["softmax", "attention", "linear-algebra"],
                         "symbols": [
                             {"symbol_latex": "Q", "meaning": "クエリ行列", "defined_page": p(2)},
                             {"symbol_latex": "K", "meaning": "キー行列", "defined_page": p(2)},

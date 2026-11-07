@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Step1 } from '../api'
+import type { Step1, Step2 } from '../api'
 import { useElementWidth } from '../hooks/useElementWidth'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { EvidenceList, PageChip } from '../jump'
@@ -14,6 +14,7 @@ import {
   ovalPath,
   type ConceptLevel,
 } from './conceptLayout'
+import { equationsUsing } from './equationLinks'
 
 /** App.tsx の NARROW_QUERY と同じ幅。狭い画面では概念を上から下へ並べ、横にはみ出さないようにする */
 const NARROW_QUERY = '(max-width: 900px)'
@@ -43,10 +44,30 @@ type Knowledge = Record<string, 'known' | 'unknown'>
 const isKnowledge = (v: unknown): v is Knowledge =>
   typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => x === 'known' || x === 'unknown')
 
-export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
+/** Step 2 の式から開かれたとき、最初に選んでおく概念。object ごとに 1 回の移動として扱う */
+export type ConceptFocus = { id: string }
+
+type Step1MapProps = {
+  data: Step1
+  paperId: string
+  /** 「この概念を使う式」を調べるための Step 2。無ければ（作成中など）その欄を出さない */
+  step2?: Step2 | null
+  /** 式を押したとき（段階の番号, その段階の中での式の番号） */
+  onOpenEquation?: (stage: number, index: number) => void
+  focus?: ConceptFocus | null
+}
+
+export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1MapProps) {
   const [knowledge, setKnowledge] = useLocalStorageState<Knowledge>(`knowledge:${paperId}`, {}, isKnowledge)
   const [level, setLevel] = useLocalStorageState<ConceptLevel>(`conceptLevel:${paperId}`, 'all', isConceptLevel)
   const [selected, setSelected] = useState<string | null>(data.concepts[0]?.id ?? null)
+  // 式から移ってきたときは、その概念を選ぶ。表示範囲で隠れている概念なら「すべて」に切り替えて選べるようにする
+  useEffect(() => {
+    if (!focus || !data.concepts.some((c) => c.id === focus.id)) return
+    setSelected(focus.id)
+    setLevel((cur) => (filterConcepts(data.concepts, cur).some((c) => c.id === focus.id) ? cur : 'all'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 移動の指示（focus）が変わったときだけ動かす
+  }, [focus])
   // 表示範囲に入る概念だけを図にする。隠した概念への依存は、レイアウトと矢印が無視する
   const concepts = useMemo(() => filterConcepts(data.concepts, level), [data.concepts, level])
   const narrow = useNarrow()
@@ -61,6 +82,7 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
   // 選んだ概念が隠れたときは、見えている先頭の概念に切り替える
   const sel = concepts.find((c) => c.id === selected) ?? concepts[0]
   const selId = sel?.id ?? null
+  const usedBy = useMemo(() => (selId && onOpenEquation ? equationsUsing(step2, selId) : []), [step2, selId, onOpenEquation])
   const isActive = (e: { from: string; to: string }) => selId === e.from || selId === e.to
   const unknown = concepts.filter((c) => knowledge[c.id] === 'unknown')
   const set = (id: string, v: 'known' | 'unknown') => setKnowledge((k) => ({ ...k, [id]: v }))
@@ -212,6 +234,21 @@ export function Step1Map({ data, paperId }: { data: Step1; paperId: string }) {
               <EvidenceList items={sel.evidence} />
             ) : (
               <PageChip page={sel.first_page} label={sel.first_page ? `初出のp.${sel.first_page}を開く` : undefined} />
+            )}
+            {usedBy.length > 0 && (
+              <div className="chips" role="group" aria-label="この概念を使う式">
+                <span className="chips-label">この概念を使う式</span>
+                {usedBy.map((r) => (
+                  <button
+                    key={`${r.stage}-${r.index}`}
+                    type="button"
+                    className="chip page"
+                    onClick={() => onOpenEquation?.(r.stage, r.index)}
+                  >
+                    式 {r.label}（p.{r.page}）
+                  </button>
+                ))}
+              </div>
             )}
             {knowledge[sel.id] === 'unknown' && <p className="explain">{sel.description}</p>}
           </div>
