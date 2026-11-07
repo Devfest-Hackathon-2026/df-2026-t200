@@ -1832,3 +1832,150 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   border: 1px solid #d0d4d9;
   border-radius: 6px;
 }
+
+/* Step 1: 長い概念名は字を小さくし、収まらない分は3行で切る（全文は title と読み上げに残す） */
+.graph-node {
+  padding: 0 18px;
+}
+.graph-node-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.graph-node.long {
+  font-size: 0.82rem;
+  line-height: 1.15;
+}
+.graph-node.xlong {
+  font-size: 0.72rem;
+  line-height: 1.12;
+  padding: 0 20px;
+}
+
+/* Step 2: 手法の流れ図 */
+.flow {
+  margin: 0.6rem 0 1rem;
+}
+.flow:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+.flow-scroll {
+  overflow-x: auto;
+  padding: 4px 0;
+}
+.flow-canvas {
+  position: relative;
+  margin: 0 auto;
+}
+.flow-canvas svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.flow-edge {
+  fill: none;
+  stroke: #b4c3e0;
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition:
+    stroke 0.25s,
+    stroke-width 0.25s;
+}
+.flow-edge.active {
+  stroke: var(--blue);
+  stroke-width: 3;
+}
+.flow-arrow {
+  fill: #b4c3e0;
+}
+.flow-arrow-active {
+  fill: var(--blue);
+}
+.flow-edge-label {
+  font-size: 11px;
+  fill: var(--ink-2);
+}
+.flow-dot {
+  fill: var(--yellow);
+  stroke: var(--yellow-edge);
+  stroke-width: 1.5;
+}
+.flow-nodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.flow-nodes li {
+  position: absolute;
+}
+.flow-node {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 8px;
+  text-align: center;
+  font-family: var(--font-label);
+  font-size: 0.8rem;
+  line-height: 1.2;
+  color: var(--ink-2);
+  background: var(--sheet);
+  border: 1.5px solid var(--line-2);
+  border-radius: 10px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition:
+    background 0.25s,
+    border-color 0.25s,
+    opacity 0.25s,
+    transform 0.25s;
+}
+.flow-node.input {
+  border-style: dashed;
+}
+.flow-node.output {
+  border-width: 2.5px;
+}
+.flow-node.active {
+  opacity: 1;
+  color: var(--blue-dark);
+  background: var(--blue-soft);
+  border-color: var(--blue);
+  transform: scale(1.04);
+}
+.flow-node-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.flow-shape {
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--ink-2);
+}
+.flow-caption {
+  min-height: 1.7em;
+  margin: 0.4rem 0;
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-edge,
+  .flow-node {
+    transition: none;
+  }
+  .flow-node.active {
+    transform: none;
+  }
+}

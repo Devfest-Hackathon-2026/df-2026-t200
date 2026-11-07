@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type Stage, type Step2 } from '../api'
+import { api, type Evidence, type FlowNode, type Stage, type Step2 } from '../api'
 import { EvidenceList, PageChip } from '../jump'
 import { useJump, type JumpFn, type JumpOptions } from '../jumpContext'
+import { FlowDiagram } from './FlowDiagram'
 import { Tex } from './Tex'
 
 /** 段階の根拠（なければ最初の図表のページ）へ PDF を移動して強調する。どちらもなければ何もしない */
-function jumpToStage(jump: JumpFn, stage: Stage | undefined, options?: JumpOptions) {
-  const ev = stage?.evidence?.[0]
+function jumpToStage(jump: JumpFn, stage: Stage | undefined, options?: JumpOptions, frameEvidence?: Evidence[]) {
+  const ev = frameEvidence?.[0] ?? stage?.evidence?.[0]
   const page = ev?.page ?? stage?.figures?.[0]?.page
   if (page == null) return
   if (options) jump(page, ev?.quote, options)
   else if (ev) jump(page, ev.quote)
   else jump(page)
 }
+
+/** 流れ図のコマ（段階と1対1）の根拠。流れ図がなければ undefined */
+const frameEvidenceAt = (data: Step2, k: number) => data.flow?.frames?.find((f) => f.stage_index === k)?.evidence
 
 export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: string }) {
   const [i, setI] = useState(0)
@@ -25,13 +29,17 @@ export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: str
   useEffect(() => {
     if (openedRef.current) return
     openedRef.current = true
-    jumpToStage(jump, data.stages[0], { switchView: false })
-  }, [jump, data.stages])
+    jumpToStage(jump, data.stages[0], { switchView: false }, frameEvidenceAt(data, 0))
+  }, [jump, data])
 
   // 学生が段階を移動したときは、その段階の根拠へ移動する（狭い画面では PDF を表示する）
   const goTo = (k: number) => {
     setI(k)
-    jumpToStage(jump, data.stages[k])
+    jumpToStage(jump, data.stages[k], undefined, frameEvidenceAt(data, k))
+  }
+  const jumpToNode = (n: FlowNode) => {
+    const ev = n.evidence?.[0]
+    if (ev) jump(ev.page, ev.quote)
   }
 
   if (!stage) return <p className="muted">手法の段階を取り出せませんでした。</p>
@@ -40,6 +48,7 @@ export function Step2Walkthrough({ data, paperId }: { data: Step2; paperId?: str
       <section className="block">
         <h2>手法の流れ</h2>
         <p className="lead">{data.overview}</p>
+        {data.flow && <FlowDiagram flow={data.flow} total={data.stages.length} index={i} onGo={goTo} onNode={jumpToNode} />}
         <ol className="stepper">
           {data.stages.map((s, k) => (
             <li key={k}>

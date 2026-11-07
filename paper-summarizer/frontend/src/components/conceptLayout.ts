@@ -201,3 +201,9 @@ export function edgePaths(concepts: Concept[], layout: ConceptLayout, inset = 3)
     return { ...p, d: `M${f(a.x)},${f(a.y)} C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(b.x)},${f(b.y)}` }
   })
 }
+
+/** 楕円に収まるよう、名前が長いほど字を小さくするための区分（見た目だけで、名前は切らない） */
+export function nodeLabelSize(name: string): '' | 'long' | 'xlong' {
+  const n = [...name].length
+  return n > 16 ? 'xlong' : n > 10 ? 'long' : ''
+}

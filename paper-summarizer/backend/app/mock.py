@@ -169,6 +169,34 @@ def step2(pages: list[str]) -> dict[str, Any]:
                 "equations": [],
             },
         ],
+        "flow": {
+            "nodes": [
+                {"id": "input", "label": "入力データ", "kind": "input", "shape": "n×d", "evidence": _ev(s, 0)},
+                {"id": "attn", "label": "Attention の計算", "kind": "process", "shape": None, "evidence": _ev(s, 2)},
+                {"id": "output", "label": "出力", "kind": "output", "shape": None, "evidence": _ev(s, 3)},
+            ],
+            "edges": [
+                {"from": "input", "to": "attn", "label": "Q, K, V"},
+                {"from": "attn", "to": "output", "label": ""},
+            ],
+            "frames": [
+                {"stage_index": 0, "active_nodes": ["input"], "active_edges": [], "caption": "【デモ】入力をベクトルにする", "evidence": _ev(s, 0)},
+                {
+                    "stage_index": 1,
+                    "active_nodes": ["attn"],
+                    "active_edges": ["input->attn"],
+                    "caption": "【デモ】関係を重みとして計算する",
+                    "evidence": _ev(s, 2),
+                },
+                {
+                    "stage_index": 2,
+                    "active_nodes": ["output"],
+                    "active_edges": ["attn->output"],
+                    "caption": "【デモ】出力を得て検証する",
+                    "evidence": _ev(s, 3),
+                },
+            ],
+        },
     }
 
 

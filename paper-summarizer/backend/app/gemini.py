@@ -5,15 +5,20 @@
 """
 
 import json
+import logging
 import secrets
 from typing import Any
 
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
 from . import config
 from .errors import EmptyResponseError
+from .flow import clean_flow
 from .schemas import Answer, QuizRewrites, Step1, Step2, Step3
+
+log = logging.getLogger("paper")
 
 
 def client() -> genai.Client:
@@ -81,10 +86,18 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
         ),
     )
     if resp.parsed is not None:
-        return resp.parsed.model_dump(mode="json")
+        return resp.parsed.model_dump(mode="json", by_alias=True)
     if not (resp.text or "").strip():
         raise EmptyResponseError(f"empty response from {model}")
-    return schema.model_validate_json(resp.text).model_dump(mode="json")
+    try:
+        return schema.model_validate_json(resp.text).model_dump(mode="json", by_alias=True)
+    except ValidationError:
+        # 図解は付け足しなので、flow の中身が不正でも Step 2 の解説は捨てない。flow を外して検証し直す
+        raw = json.loads(resp.text)
+        if not (isinstance(raw, dict) and raw.get("flow") is not None):
+            raise
+        log.warning("dropping invalid flow from %s response", schema.__name__)
+        return schema.model_validate({k: v for k, v in raw.items() if k != "flow"}).model_dump(mode="json", by_alias=True)
 
 
 def step1(pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
@@ -107,8 +120,12 @@ Step 1 の結果{DOC_RULE}:
 - 各段階に関係する図表（figures）と数式（equations）を、論文中の該当ページとともに対応付ける。
   図表・数式が無い段階では空配列でよい。同じ図表を複数段階に重複させない。
 - 数式の latex は KaTeX で描画できる記法で、symbols で各記号の意味と定義されているページを示す。
-- 実験結果の主要な図表（性能比較の表など）は最後の段階に含める。"""
-    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli, lang)
+- 実験結果の主要な図表（性能比較の表など）は最後の段階に含める。
+- flow に手法の流れ図のデータを入れる。ノードは 3〜8 個（kind は input / process / output）、edges は循環させない。
+  frames は stages と同じ数で、stage_index が各段階に対応する（active_edges は "始点id->終点id"）。
+  shape（テンソルの形など）は論文に書かれているときだけ書き、根拠を付ける。書かれていなければ null。
+  数値のデータは入れない。ノード・コマの evidence は論文からそのまま抜き出す。"""
+    return clean_flow(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli, lang))
 
 
 def step3(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:

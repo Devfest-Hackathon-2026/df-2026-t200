@@ -24,6 +24,18 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await page.getByRole('button', { name: '次の段階へ' }).click()
   await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
 
+  // 流れ図: コマ送りで段階の解説が一緒に動き、PDF の強調も出る（自動再生はしない）
+  await expect(page.getByText('AIが論文から作った図解です。根拠ページで確かめてください')).toBeVisible()
+  const flowGroup = page.getByRole('group', { name: /手法の流れ図/ })
+  await page.getByRole('button', { name: '前へ', exact: true }).click()
+  await expect(page.getByRole('heading', { name: /^1\. / })).toBeVisible()
+  await expect(flowGroup.locator('.flow-node.active')).toHaveCount(1)
+  await flowGroup.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('heading', { name: /^2\. / })).toBeVisible()
+  await expect(flowGroup.locator('.flow-edge.active')).toHaveCount(1)
+  await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
+
   // Step 3: 自分の考えを書いてから解説を開く
   await page.getByRole('tab', { name: /批判的思考/ }).click()
   const reveal = page.getByRole('button', { name: '解説を見る', exact: true })
