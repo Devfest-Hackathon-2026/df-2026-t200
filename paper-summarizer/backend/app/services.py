@@ -246,6 +246,7 @@ class PaperService:
                 "status": "done" if source else "queued",
                 "error": None,
                 "demo": source["demo"] if source else config.DEMO_MODE,
+                "analysis_version": source.get("analysis_version") if source else config.ANALYSIS_VERSION,
                 "results": dict(source["results"]) if source else {},
                 "messages": [],
                 "owner": owner,
@@ -303,7 +304,7 @@ class PaperService:
                 results[key] = verify_all(_generate_step(analyzer, key, src, results), src.norm_pages)
                 store.set_result(paper_id, key, results[key])
                 log.info("paper=%s %s done", paper_id, key)
-            store.update(paper_id, status="done", error=None)
+            store.update(paper_id, status="done", error=None, analysis_version=config.ANALYSIS_VERSION)
         except Exception as e:  # noqa: BLE001
             # 画面には決まった文言だけを返し、詳細は paper_id 付きでログに残す
             log.exception("analysis failed paper=%s", paper_id)
@@ -322,7 +323,9 @@ class PaperService:
             return False
         if not self.analysis_quota.take():
             raise QuotaExceeded
-        if store.transition(paper_id, retryable, status="queued", error=None) is None:
+        # 古い版で途中まで作った結果は、今の版のプロンプトで作り直す（古い結果に新しい版を付けない）
+        restart = {} if paper.get("analysis_version") == config.ANALYSIS_VERSION else {"results": {}, "analysis_version": config.ANALYSIS_VERSION}
+        if store.transition(paper_id, retryable, status="queued", error=None, **restart) is None:
             return False
         self.start(paper_id)
         return True

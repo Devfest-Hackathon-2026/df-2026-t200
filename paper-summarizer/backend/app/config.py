@@ -40,6 +40,9 @@ THINKING_LEVEL = thinking_level(os.getenv("THINKING_LEVEL", "low"))
 # 認証情報がなければデモモード（サンプル解析結果）で動く。DEMO_MODE=1 で強制。
 # 動いているコミット。deploy.sh が渡し、CD は文書だけの変更かをこの値と比べて決める
 GIT_SHA = os.getenv("GIT_SHA", "")
+# 解析結果の形の版。プロンプトやスキーマを変えて、新しい項目（例: Step 2 の流れ図）を出すようにしたら1つ上げる。
+# 同じ PDF の使い回しは、この版で作られた結果に限る（古い結果を写すと、新しい機能が画面に出ないため）
+ANALYSIS_VERSION = 2
 DEMO_MODE = os.getenv("DEMO_MODE") == "1" or not (GOOGLE_CLOUD_PROJECT or GEMINI_API_KEY)
 
 # PDF をリクエストに直接載せるため上限を設ける（大きいファイルは本番で Cloud Storage URI 渡しにする）。
