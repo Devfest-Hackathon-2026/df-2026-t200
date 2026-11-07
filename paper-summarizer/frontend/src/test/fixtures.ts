@@ -1,4 +1,51 @@
-import type { Message, Paper, Step1, Step2, Step3 } from '../api'
+import type { Message, Paper, Quiz, Step1, Step2, Step3 } from '../api'
+
+export const quiz: Quiz = {
+  id: 'quiz1',
+  created_at: '2026-11-05T00:00:00Z',
+  submitted: false,
+  items: [
+    { id: 'q1', text: '提案手法は層を12枚重ねる。' },
+    { id: 'q2', text: '注意の重みは softmax で確率にそろえる。' },
+    { id: 'q3', text: '実験では従来手法より誤差が大きかった。' },
+  ],
+  result: null,
+}
+
+const noKey = { page_ok: null, original: null, changed: null, changed_from: null, changed_to: null, evidence: null }
+
+export const quizResult: Quiz = {
+  ...quiz,
+  submitted: true,
+  result: {
+    found: 1,
+    false_alarms: 1,
+    missed: 0,
+    total_errors: 1,
+    items: [
+      { id: 'q1', text: quiz.items[0].text, selected: true, user_page: 3, altered: false, ...noKey },
+      { id: 'q2', text: quiz.items[1].text, selected: false, user_page: null, altered: false, ...noKey },
+      {
+        id: 'q3',
+        text: quiz.items[2].text,
+        selected: true,
+        user_page: 2,
+        altered: true,
+        page_ok: true,
+        original: '実験では従来手法より誤差が小さかった。',
+        changed: '比較の向きを逆にした',
+        changed_from: '小さかった',
+        changed_to: '大きかった',
+        evidence: {
+          page: 2,
+          quote: 'In every run the error was smaller than the baseline.',
+          verified: true,
+          quote_span: 'the error was smaller than the baseline',
+        },
+      },
+    ],
+  },
+}
 
 export const step1: Step1 = {
   title: 'Sample Paper',

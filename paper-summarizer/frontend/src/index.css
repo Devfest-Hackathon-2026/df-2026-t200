@@ -786,7 +786,7 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 }
 .tabs .tablist {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 4px 16px 6px;
   border-bottom: 2px solid #e4e6e8;
@@ -1718,6 +1718,108 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   margin: 10px 0 0;
 }
 
+/* 誤り探しモード: 解説とは別のモードだと分かるよう、タブと枠の色を変える */
+.tab.quiz-tab.active {
+  background: #fdecea;
+  color: #8a1c13;
+}
+.tab.quiz-tab.active .tab-num {
+  background: #b3261e;
+  border-color: #b3261e;
+}
+.quiz {
+  display: grid;
+  gap: 12px;
+  padding: 12px 16px 24px;
+}
+.quiz-notice {
+  border: 2px dashed #b3261e;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #fff8f7;
+}
+.quiz-notice h2 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  color: #8a1c13;
+}
+.quiz-notice p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.quiz-rows {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.quiz-row {
+  border: 1px solid #d5d8db;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.quiz-row.selected,
+.quiz-row.found {
+  border-color: var(--blue);
+}
+.quiz-row.false-alarm,
+.quiz-row.missed {
+  border-color: #b3261e;
+}
+.quiz-row p {
+  margin: 4px 0;
+}
+.quiz-pick {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.quiz-no {
+  font-weight: 700;
+  margin-right: 4px;
+}
+.quiz-page {
+  flex-wrap: wrap;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0 0 24px;
+}
+.quiz-page input {
+  width: 5em;
+}
+.quiz-row-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.quiz-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.quiz-caption {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.quiz-evidence {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.quiz-actions {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 900px) {
+  .quiz-compare {
+    grid-template-columns: 1fr;
+  }
+}
 .tex-fallback-page {
   display: flex;
   flex-direction: column;

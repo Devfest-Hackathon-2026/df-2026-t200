@@ -14,7 +14,7 @@ from google.genai import types
 from . import config
 from .errors import EmptyResponseError
 from .flow import clean_flow
-from .schemas import Answer, Step1, Step2, Step3
+from .schemas import Answer, QuizRewrites, Step1, Step2, Step3
 
 
 def client() -> genai.Client:
@@ -160,3 +160,27 @@ def ask(
 - 論文外の一般知識で補った場合は source=general_knowledge とし、その旨が分かるように答える。
 - 論文に記載がなく答えられない場合は source=not_in_paper とし、推測で埋めない。"""
     return _generate(config.QA_MODEL, [_pdf_part(pdf_bytes), prompt], Answer, level, cli, lang)
+
+
+def quiz_rewrite(targets: list[dict[str, Any]], level: str, *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
+    """誤り探し用に、文の事実を1か所だけ変えた文を作らせる。論文由来の文と引用はそれぞれ別のタグで囲んで渡す。"""
+    blocks = []
+    for t in targets:
+        blocks.append(
+            f"id: {t['id']}\n元の文{DOC_RULE}:\n{_fence('sentence', t['text'])}\nこの文の根拠（論文の原文）:\n{_fence('evidence', t['quote'])}"
+        )
+    prompt = f"""学生が「AIの解説の誤りを論文の原文と照らして見つける」練習をするために、次の文それぞれを、事実を1か所だけ変えた誤りの文に書き換えてください。
+
+{chr(10).join(blocks)}
+
+- 各文について、次の項目をすべて返す。id はそのまま使う。
+  - changed_from: 元の文の中の、変える語句。元の文にある文字列をそのまま（1か所にだけ現れる語句にする）。
+  - changed_to: changed_from の代わりに入れる語句。
+  - altered: 元の文の changed_from を changed_to に置き換えただけの文。ほかは1文字も変えない。
+  - quote_span: 根拠の原文の中の、changed_from の事実を述べている部分。原文の一部を一字一句そのまま（言い換えず、原文と同じ言語で）抜き出す。20文字以上で、changed_to は含めない。
+  - changed: 何をどう変えたかを1文で。
+- 変えるのは事実1か所だけ。数値、比較の向き（大きい/小さい、改善/悪化）、どの部品・手順が何をするか、のどれかにする。
+- 変えた結果は、quote_span と矛盾し、原文のページを開けば誤りだと確かめられるものにする。quote_span に書かれていない事実は変えない。
+- 元の文と同じ言語・文体にする。誤りだと分かる注意書きや「（誤）」のような印は付けない。
+- 全部の id について1つずつ返す。"""
+    return _generate(config.QA_MODEL, [prompt], QuizRewrites, level, cli, lang)
