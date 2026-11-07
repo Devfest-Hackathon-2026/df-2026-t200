@@ -105,6 +105,49 @@ def test_unusable_flow_is_omitted_not_an_error(bad):
     assert out["overview"] == "o"
 
 
+@pytest.mark.parametrize("bad_ref", [["a"], {"x": 1}, 3, None])
+def test_non_string_edge_endpoints_do_not_crash(bad_ref):
+    f = _flow()
+    f["edges"].append({"from": bad_ref, "to": "b", "label": ""})
+    f["edges"].append({"from": "a", "to": bad_ref, "label": ""})
+    out = flow_mod.clean_flow(_s2(f))["flow"]
+    assert [(e["from"], e["to"]) for e in out["edges"]] == [("a", "b"), ("b", "c")]
+
+
+@pytest.mark.parametrize("bad_id", [["a"], {"x": 1}, 3, None, ""])
+def test_non_string_node_ids_are_dropped(bad_id):
+    f = _flow()
+    f["nodes"].append({**_node("z"), "id": bad_id})
+    out = flow_mod.clean_flow(_s2(f))["flow"]
+    assert [n["id"] for n in out["nodes"]] == ["a", "b", "c"]
+
+
+@pytest.mark.parametrize("bad_list", [["a", ["x"], {"k": 1}, 5], "a"])
+def test_non_string_active_refs_are_dropped(bad_list):
+    f = _flow()
+    f["frames"][0]["active_nodes"] = bad_list
+    f["frames"][0]["active_edges"] = bad_list
+    out = flow_mod.clean_flow(_s2(f))["flow"]
+    assert out["frames"][0]["active_nodes"] in (["a"], [])
+    assert out["frames"][0]["active_edges"] == []
+
+
+def test_edge_count_is_capped():
+    ids = [f"n{k}" for k in range(12)]
+    f = {
+        "nodes": [_node(i) for i in ids],
+        "edges": [{"from": a, "to": b, "label": ""} for a in ids for b in ids if a != b],
+        "frames": [{"stage_index": 0, "active_nodes": [], "active_edges": [], "caption": "", "evidence": []}],
+    }
+    assert len(flow_mod.clean_flow(_s2(f))["flow"]["edges"]) == flow_mod.MAX_EDGES
+
+
+def test_omitting_flow_is_logged(caplog):
+    with caplog.at_level("WARNING"):
+        flow_mod.clean_flow(_s2({"nodes": [], "edges": [], "frames": []}))
+    assert any("flow" in r.message for r in caplog.records)
+
+
 def test_does_not_mutate_input():
     s2 = _s2(_flow())
     before = copy.deepcopy(s2)

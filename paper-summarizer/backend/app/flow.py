@@ -5,9 +5,13 @@ Gemini が出した flow に不整合があっても解析全体は失敗させ�
 """
 
 import copy
+import logging
 from typing import Any
 
 MAX_NODES = 12
+MAX_EDGES = 30
+
+log = logging.getLogger("paper")
 
 
 def _dicts(v: Any) -> list[dict[str, Any]]:
@@ -32,7 +36,7 @@ def _clean(flow: Any, n_stages: int) -> dict[str, Any] | None:
     keys: set[str] = set()
     for e in _dicts(flow.get("edges")):
         a, b = e.get("from"), e.get("to")
-        if a in seen and b in seen and a != b and f"{a}->{b}" not in keys:
+        if isinstance(a, str) and isinstance(b, str) and a in seen and b in seen and a != b and len(edges) < MAX_EDGES and f"{a}->{b}" not in keys:
             keys.add(f"{a}->{b}")
             edges.append(e)
     frames: dict[int, dict[str, Any]] = {}
@@ -62,6 +66,8 @@ def clean_flow(step2: dict[str, Any]) -> dict[str, Any]:
     stages = out.get("stages")
     cleaned = _clean(out["flow"], len(stages) if isinstance(stages, list) else 0)
     if cleaned is None:
+        if out["flow"] is not None:
+            log.warning("flow omitted: unusable (stages=%s)", len(stages) if isinstance(stages, list) else "invalid")
         del out["flow"]
     else:
         out["flow"] = cleaned

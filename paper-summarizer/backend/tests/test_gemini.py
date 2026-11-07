@@ -8,6 +8,7 @@ import re
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from app import config, gemini, mock
 from app.errors import EmptyResponseError
@@ -232,3 +233,43 @@ def test_step2_without_flow_still_works(fake):
     fake(s2)
     out = gemini.step2(b"%PDF", "undergrad", mock.step1(PAGES, "a.pdf"))
     assert "flow" not in out
+
+
+def _bad_kind(f):
+    f["nodes"][0]["kind"] = "banana"
+
+
+def _missing_label(f):
+    del f["nodes"][1]["label"]
+
+
+def _bad_frame_type(f):
+    f["frames"][0]["stage_index"] = "zero"
+
+
+@pytest.mark.parametrize("corrupt", [_bad_kind, _missing_label, _bad_frame_type])
+def test_step2_drops_an_invalid_flow_but_keeps_the_analysis(fake, caplog, corrupt):
+    s2 = mock.step2(PAGES)
+    corrupt(s2["flow"])
+    fake(s2)
+    with caplog.at_level("WARNING"):
+        out = gemini.step2(b"%PDF", "undergrad", mock.step1(PAGES, "a.pdf"))
+    assert "flow" not in out
+    assert len(out["stages"]) == len(s2["stages"])
+    assert any("flow" in r.message for r in caplog.records)
+
+
+def test_flow_that_is_not_an_object_is_dropped(fake):
+    s2 = mock.step2(PAGES)
+    s2["flow"] = "oops"
+    fake(s2)
+    assert "flow" not in gemini.step2(b"%PDF", "undergrad", mock.step1(PAGES, "a.pdf"))
+
+
+def test_invalid_stages_still_fail_even_when_flow_is_dropped(fake):
+    s2 = mock.step2(PAGES)
+    s2["flow"]["nodes"][0]["kind"] = "banana"
+    s2["stages"][0]["title"] = None
+    fake(s2)
+    with pytest.raises(ValidationError):
+        gemini.step2(b"%PDF", "undergrad", mock.step1(PAGES, "a.pdf"))

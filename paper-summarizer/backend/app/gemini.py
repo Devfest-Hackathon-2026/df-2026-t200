@@ -5,16 +5,20 @@
 """
 
 import json
+import logging
 import secrets
 from typing import Any
 
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
 from . import config
 from .errors import EmptyResponseError
 from .flow import clean_flow
 from .schemas import Answer, QuizRewrites, Step1, Step2, Step3
+
+log = logging.getLogger("paper")
 
 
 def client() -> genai.Client:
@@ -85,7 +89,15 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
         return resp.parsed.model_dump(mode="json", by_alias=True)
     if not (resp.text or "").strip():
         raise EmptyResponseError(f"empty response from {model}")
-    return schema.model_validate_json(resp.text).model_dump(mode="json", by_alias=True)
+    try:
+        return schema.model_validate_json(resp.text).model_dump(mode="json", by_alias=True)
+    except ValidationError:
+        # 図解は付け足しなので、flow の中身が不正でも Step 2 の解説は捨てない。flow を外して検証し直す
+        raw = json.loads(resp.text)
+        if not (isinstance(raw, dict) and raw.get("flow") is not None):
+            raise
+        log.warning("dropping invalid flow from %s response", schema.__name__)
+        return schema.model_validate({k: v for k, v in raw.items() if k != "flow"}).model_dump(mode="json", by_alias=True)
 
 
 def step1(pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
