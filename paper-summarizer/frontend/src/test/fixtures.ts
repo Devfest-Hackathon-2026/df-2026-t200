@@ -73,6 +73,7 @@ export const paper: Paper = {
   id: '0123456789abcdef',
   filename: 'sample.pdf',
   level: 'undergrad',
+  lang: 'ja',
   page_count: 3,
   status: 'done',
   error: null,

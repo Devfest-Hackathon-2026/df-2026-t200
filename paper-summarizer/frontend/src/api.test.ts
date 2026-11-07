@@ -60,7 +60,7 @@ describe('api', () => {
     expect(new Headers((spy.mock.calls[0][1] as RequestInit).headers).get('X-Client-Id')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
   })
 
-  it('upload sends multipart form with file and level', async () => {
+  it('upload sends multipart form with file, level and lang', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ id: 'a', reused: false }))
     const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
     await api.upload(file, 'grad')
@@ -68,7 +68,14 @@ describe('api', () => {
     expect(url).toBe('/api/papers')
     const body = (init as RequestInit).body as FormData
     expect(body.get('level')).toBe('grad')
+    expect(body.get('lang')).toBe('ja')
     expect((body.get('file') as File).name).toBe('a.pdf')
+  })
+
+  it('upload sends the chosen output language', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ id: 'a', reused: false }))
+    await api.upload(new File(['%PDF'], 'a.pdf', { type: 'application/pdf' }), 'undergrad', 'en')
+    expect(((spy.mock.calls[0][1] as RequestInit).body as FormData).get('lang')).toBe('en')
   })
 
   it('ask posts question and current step as JSON', async () => {
