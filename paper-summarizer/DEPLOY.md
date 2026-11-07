@@ -83,6 +83,13 @@ gcloud run services update paper-summarizer-api --region asia-northeast1 --proje
   --update-env-vars MAX_ANALYSES_PER_DAY=0,MAX_ASKS_PER_DAY=0
 ```
 
+ログインが無いので、誰かが上限を使い切ると、その日はほかの人（審査員を含む）も使えなくなる。審査の直前に使い切られていたら、記録を消すか上限を上げて戻す。記録の読み書きに失敗したときも、費用を出さないよう断る側に倒している。
+
+```bash
+# 記録を消して数え直す（解析の上限だけなら analyses.json だけを消す）
+gcloud storage rm gs://<プロジェクト ID>-paper-data/quota/analyses.json
+```
+
 ## 公開前に知っておくこと
 
 - ログイン機能がないため、URLを知っている人は誰でも論文をアップロードできる。「これまでの論文」には、そのブラウザでアップロードした論文だけが出る（ブラウザごとのランダムなIDで絞る）。論文のIDを知られれば中身は見えるので、本人のデータの分離は#10（Firebase Anonymous Auth）で行う

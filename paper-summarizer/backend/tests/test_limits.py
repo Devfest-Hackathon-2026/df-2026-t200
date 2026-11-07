@@ -2,6 +2,7 @@
 
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -47,6 +48,26 @@ def test_quota_zero_blocks_everything(tmp_path):
 def test_quota_tolerates_a_broken_file(tmp_path):
     (tmp_path / "t.json").write_text("{broken", encoding="utf-8")
     assert DailyQuota("t", 1, directory=tmp_path).take() is True
+
+
+def test_quota_refuses_when_the_record_cannot_be_read(tmp_path, monkeypatch):
+    """Cloud Storage の一時的な読み込みエラーで数が0に戻ると上限が外れるので、読めないときは断る。"""
+    q = DailyQuota("t", 5, directory=tmp_path)
+    assert q.take() is True
+    before = (tmp_path / "t.json").read_text(encoding="utf-8")
+
+    def fail(*_a, **_k):
+        raise OSError("transient I/O error")
+
+    monkeypatch.setattr(Path, "read_text", fail)
+    assert q.take() is False
+    monkeypatch.undo()
+    assert (tmp_path / "t.json").read_text(encoding="utf-8") == before
+
+
+def test_list_is_not_cached(client):
+    res = client.get("/api/papers", headers={"X-Client-Id": CID_A})
+    assert res.headers["cache-control"] == "private, no-store"
 
 
 # ---------- API ----------

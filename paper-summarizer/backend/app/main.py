@@ -13,7 +13,7 @@ import logging
 import threading
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 
 from . import config, store
@@ -68,7 +68,9 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/api/papers")
-def list_papers(client_id: ClientId = None) -> list[dict[str, Any]]:
+def list_papers(response: Response, client_id: ClientId = None) -> list[dict[str, Any]]:
+    # ブラウザごとに中身が違うので、Firebase Hosting の CDN やブラウザにキャッシュさせない
+    response.headers["Cache-Control"] = "private, no-store"
     return store.list_papers(store.owner_of(client_id))
 
 

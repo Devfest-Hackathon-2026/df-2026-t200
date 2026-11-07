@@ -35,13 +35,20 @@ class DailyQuota:
         self._lock = threading.Lock()
 
     def _load(self) -> list[float]:
+        """記録を読む。まだ無ければ空。中身が壊れていれば警告して空から数え直す。
+
+        読み込み自体の失敗（Cloud Storage の一時的なエラーなど）は OSError のまま投げる。
+        ここで空を返して上書きすると数が0に戻り、上限が外れてしまうため。
+        """
         try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
-            return [float(t) for t in data] if isinstance(data, list) else []
+            text = self._path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return []
-        except (OSError, ValueError, TypeError) as e:
-            log.warning("quota file %s is unreadable, starting over: %s", self._path.name, e)
+        try:
+            data = json.loads(text)
+            return [float(t) for t in data] if isinstance(data, list) else []
+        except (ValueError, TypeError) as e:
+            log.warning("quota file %s is broken, starting over: %s", self._path.name, e)
             return []
 
     def _save(self, stamps: list[float]) -> None:
@@ -56,10 +63,15 @@ class DailyQuota:
             return False
         now = self._clock()
         with self._lock:
-            stamps = [t for t in self._load() if now - t < self.window_sec]
-            if len(stamps) >= self.limit:
-                log.warning("daily quota reached: %s (%d)", self.name, self.limit)
+            try:
+                stamps = [t for t in self._load() if now - t < self.window_sec]
+                if len(stamps) >= self.limit:
+                    log.warning("daily quota reached: %s (%d)", self.name, self.limit)
+                    return False
+                stamps.append(now)
+                self._save(stamps)
+                return True
+            except OSError as e:
+                # 数えられないときは費用を出さない側に倒す
+                log.error("quota %s could not be read or written, refusing: %s", self.name, e)
                 return False
-            stamps.append(now)
-            self._save(stamps)
-            return True
