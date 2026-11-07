@@ -71,6 +71,24 @@ export type Paper = {
   messages: Message[]
 }
 
+/** 誤り探しの問題。回答前は id と文だけで、どれが誤りかはサーバーが返さない */
+export type QuizItem = { id: string; text: string }
+export type QuizResultItem = {
+  id: string
+  text: string
+  selected: boolean
+  user_page: number | null
+  altered: boolean
+  page_ok: boolean | null
+  /** 誤りの文のときだけ入る */
+  original: string | null
+  changed: string | null
+  evidence: Evidence | null
+}
+export type QuizResult = { found: number; false_alarms: number; missed: number; total_errors: number; items: QuizResultItem[] }
+export type Quiz = { id: string; created_at: string; submitted: boolean; items: QuizItem[]; result: QuizResult | null }
+export type QuizPick = { id: string; page: number }
+
 export type Level = Paper['level']
 export type Lang = NonNullable<Paper['lang']>
 /** 一覧の1件。level は一覧 API が返す場合だけ入る（古いバックエンドでは無い） */
@@ -142,5 +160,19 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ question, current_step: currentStep }),
     }).then((r) => json<{ messages: Message[] }>(r)),
+  getQuiz: (id: string) => fetch(`/api/papers/${id}/quiz`).then((r) => json<{ quiz: Quiz | null }>(r)),
+  /** force なしなら、問題があればそれを返す（Gemini を呼ばない）。force は「新しい問題」で、上限に数えられる */
+  createQuiz: (id: string, force = false) =>
+    fetch(`/api/papers/${id}/quiz`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force }),
+    }).then((r) => json<{ quiz: Quiz }>(r)),
+  answerQuiz: (id: string, quizId: string, picks: QuizPick[]) =>
+    fetch(`/api/papers/${id}/quiz/${quizId}/answer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ picks }),
+    }).then((r) => json<{ quiz: Quiz }>(r)),
   pdfUrl: (id: string) => `/api/papers/${id}/pdf`,
 }
