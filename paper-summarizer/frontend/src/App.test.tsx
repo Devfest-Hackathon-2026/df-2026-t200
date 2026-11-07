@@ -6,10 +6,13 @@ import App from './App'
 import { paper } from './test/fixtures'
 
 const viewer = vi.hoisted(() => ({ jumpTo: vi.fn(), clearHighlight: vi.fn() }))
+// lazy な PdfViewer がまだ読み込み中（マウント前）の状態を作るための関門
+const gate = vi.hoisted(() => ({ open: true, promise: Promise.resolve(), release: () => {} }))
 vi.mock('./components/PdfViewer', async () => {
   const { forwardRef, useImperativeHandle } = await import('react')
   return {
     PdfViewer: forwardRef((_props, ref) => {
+      if (!gate.open) throw gate.promise
       useImperativeHandle(ref, () => viewer)
       return <div data-testid="pdf" />
     }),
@@ -144,6 +147,27 @@ describe('App', () => {
     viewer.jumpTo.mockClear()
     await userEvent.click(screen.getByRole('button', { name: '初出のp.2を開く' }))
     expect(container.querySelector('.workspace')).toHaveClass('show-pdf')
+    await waitFor(() => expect(viewer.jumpTo).toHaveBeenCalledWith(2, undefined))
+  })
+
+  it('delivers a jump requested before the lazy PDF viewer mounted', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(paper)
+    gate.open = false
+    gate.promise = new Promise<void>((resolve) => {
+      gate.release = () => {
+        gate.open = true
+        resolve()
+      }
+    })
+    render(<App />)
+    await screen.findByText('問題A')
+    viewer.jumpTo.mockClear()
+    await userEvent.click(screen.getByRole('button', { name: '初出のp.2を開く' }))
+    expect(viewer.jumpTo).not.toHaveBeenCalled()
+    gate.release()
     await waitFor(() => expect(viewer.jumpTo).toHaveBeenCalledWith(2, undefined))
   })
 
