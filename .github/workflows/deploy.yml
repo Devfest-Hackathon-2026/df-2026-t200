@@ -45,16 +45,28 @@ jobs:
         with:
           # CI が通ったコミットそのものをデプロイする
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # 本番で動いているコミットと比べて、文書だけの変更かを調べる
+          fetch-depth: 0
       - name: Skip if this is not the latest main
         # 古いコミットの CI を再実行したときに、古い版を本番に出さない
         id: latest
         run: |
           head=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$head" = "$(git rev-parse HEAD)" ]; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ "$head" != "$(git rev-parse HEAD)" ]; then
             echo "::notice::main は $head に進んでいるので、このコミットはデプロイしない"
+            exit 0
           fi
+          # 本番で動いているコミット（/api/health の version）からの変更が文書（*.md と docs/）だけなら、
+          # イメージを作り直さない。version が読めない・履歴に無いときと、手動実行のときは常にデプロイする
+          deployed=$(curl -fsS "https://${PROJECT_ID}.web.app/api/health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' || true)
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ -n "$deployed" ] && git merge-base --is-ancestor "$deployed" HEAD 2>/dev/null; then
+            code=$(git diff --name-only "$deployed" HEAD | grep -vE '(\.md$|^docs/)' || true)
+            if [ -z "$code" ]; then
+              echo "::notice::本番（$deployed）からの変更が文書だけなので、デプロイしない"
+              exit 0
+            fi
+          fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
 
       # 依存パッケージのスクリプトにデプロイ用の認証情報を見せないよう、認証より前にビルドする
       - uses: actions/setup-node@v7
@@ -78,12 +90,15 @@ jobs:
       - name: Deploy API (Cloud Run)
         if: steps.latest.outputs.ok == 'true'
         # 「誰でも呼べる」設定は変えない（デプロイ用アカウントにその権限を渡していない）
-        run: SKIP_INVOKER_IAM=1 ./deploy.sh api
+        run: SKIP_INVOKER_IAM=1 GIT_SHA="$(git rev-parse HEAD)" ./deploy.sh api
       - name: Deploy web (Firebase Hosting)
         if: steps.latest.outputs.ok == 'true'
         run: SKIP_WEB_BUILD=1 ./deploy.sh web
       - name: Smoke test
         if: steps.latest.outputs.ok == 'true'
         run: |
-          curl -fsS "https://${PROJECT_ID}.web.app/api/health" | tee /dev/stderr | grep -q '"backend":"vertex"'
+          health=$(curl -fsS "https://${PROJECT_ID}.web.app/api/health")
+          echo "$health"
+          echo "$health" | grep -q '"backend":"vertex"'
+          echo "$health" | grep -q "\"version\":\"$(git rev-parse HEAD)\""
           curl -fsSI "https://${PROJECT_ID}.web.app/" | grep -qi '^cache-control: no-cache'

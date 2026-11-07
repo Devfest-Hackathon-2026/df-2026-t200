@@ -38,6 +38,8 @@ def thinking_level(raw: str) -> str:
 THINKING_LEVEL = thinking_level(os.getenv("THINKING_LEVEL", "low"))
 
 # 認証情報がなければデモモード（サンプル解析結果）で動く。DEMO_MODE=1 で強制。
+# 動いているコミット。deploy.sh が渡し、CD は文書だけの変更かをこの値と比べて決める
+GIT_SHA = os.getenv("GIT_SHA", "")
 DEMO_MODE = os.getenv("DEMO_MODE") == "1" or not (GOOGLE_CLOUD_PROJECT or GEMINI_API_KEY)
 
 # PDF をリクエストに直接載せるため上限を設ける（大きいファイルは本番で Cloud Storage URI 渡しにする）。
