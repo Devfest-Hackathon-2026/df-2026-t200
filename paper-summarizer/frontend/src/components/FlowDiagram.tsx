@@ -45,6 +45,22 @@ export function FlowDiagram({
   const activeNodes = new Set(frame?.active_nodes ?? [])
   const activeEdges = new Set(frame?.active_edges ?? [])
 
+  // ノードが多くて図が横にはみ出すとき、そのコマで強調するノードが見えるよう横にスクロールする
+  const scroller = useRef<HTMLDivElement>(null)
+  const activeKey = (frame?.active_nodes ?? []).join('\n')
+  useEffect(() => {
+    const el = scroller.current
+    if (!el || el.scrollWidth <= el.clientWidth) return
+    const xs = (activeKey ? activeKey.split('\n') : []).flatMap((id) => {
+      const p = layout.pos.get(id)
+      return p ? [p.x] : []
+    })
+    if (xs.length === 0) return
+    const mid = (Math.min(...xs) + Math.max(...xs) + FLOW_NODE_W) / 2
+    const left = Math.max(0, Math.min(mid - el.clientWidth / 2, el.scrollWidth - el.clientWidth))
+    el.scrollTo?.({ left, behavior: reduced ? 'auto' : 'smooth' })
+  }, [activeKey, layout, reduced])
+
   const box = useRef<HTMLDivElement>(null)
   // ボタンで端のコマに着いて押したボタンが無効になるとき、フォーカスが body に落ちないよう図へ戻す
   const step = (k: number) => {
@@ -72,7 +88,7 @@ export function FlowDiagram({
       onKeyDown={onKeyDown}
     >
       <p className="flow-note small muted">AIが論文から作った図解です。根拠ページで確かめてください</p>
-      <div className="flow-scroll">
+      <div className="flow-scroll" ref={scroller}>
         <div className="flow-canvas" style={{ width: layout.width, height: layout.height }}>
           <svg width={layout.width} height={layout.height} aria-hidden="true" focusable="false">
             <defs>

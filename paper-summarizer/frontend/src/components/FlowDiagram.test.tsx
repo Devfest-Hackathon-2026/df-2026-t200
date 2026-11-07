@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import type { Flow } from '../api'
 import { JumpContext } from '../jumpContext'
 import { step2, step2WithFlow } from '../test/fixtures'
 import { FlowDiagram } from './FlowDiagram'
@@ -200,5 +201,47 @@ describe('Step2Walkthrough with a flow', () => {
     )
     expect(jump).toHaveBeenCalledTimes(1)
     expect(jump).toHaveBeenCalledWith(2, 'we embed tokens', { switchView: false })
+  })
+})
+
+describe('FlowDiagram scrolling', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+  const wide: Flow = {
+    nodes: ids.map((id, i) => ({ id, label: id, kind: i === 0 ? 'input' : i === 6 ? 'output' : 'process', shape: null, evidence: [] })),
+    edges: ids.slice(1).map((id, i) => ({ from: ids[i], to: id, label: '' })),
+    frames: [
+      { stage_index: 0, active_nodes: ['a', 'b'], active_edges: [], caption: 'first', evidence: [] },
+      { stage_index: 1, active_nodes: ['f', 'g'], active_edges: [], caption: 'last', evidence: [] },
+    ],
+  }
+
+  function fakeScroller(clientWidth: number) {
+    const scrollTo = vi.fn()
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('flow-scroll') ? clientWidth : 0
+    })
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('flow-scroll') ? 1400 : 0
+    })
+    HTMLElement.prototype.scrollTo = scrollTo as unknown as typeof HTMLElement.prototype.scrollTo
+    return scrollTo
+  }
+
+  it('scrolls sideways so the nodes of the current frame are visible', () => {
+    const scrollTo = fakeScroller(400)
+    const { rerender } = render(<FlowDiagram flow={wide} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ left: 0 }))
+    rerender(<FlowDiagram flow={wide} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
+    const { left } = scrollTo.mock.lastCall![0] as { left: number }
+    expect(left).toBeGreaterThan(800)
+    expect(left).toBeLessThanOrEqual(1000)
+    vi.restoreAllMocks()
+  })
+
+  it('does not scroll when the whole diagram fits', () => {
+    const scrollTo = fakeScroller(2000)
+    render(<FlowDiagram flow={wide} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
+    expect(scrollTo).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
   })
 })
