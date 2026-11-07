@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { api, type Health } from './api'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { PaneDivider } from './components/PaneDivider'
 import { clampSplit, isSplit, SPLIT_DEFAULT, splitBounds } from './components/paneSplit'
-import { PdfViewer, type PdfViewerHandle } from './components/PdfViewer'
+import type { PdfViewerHandle } from './components/PdfViewer'
 import { QaPanel } from './components/QaPanel'
 import { Step1Map } from './components/Step1Map'
 import { Step2Walkthrough } from './components/Step2Walkthrough'
@@ -14,6 +14,9 @@ import { useElementWidth } from './hooks/useElementWidth'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { usePaper } from './hooks/usePaper'
 import { JumpContext, type JumpFn } from './jumpContext'
+
+// pdf.js は大きいので、論文を開くまで読み込まない（アップロード画面を軽くする）
+const PdfViewer = lazy(() => import('./components/PdfViewer').then((m) => ({ default: m.PdfViewer })))
 
 const VIEWS = [
   { value: 'explain', label: '解説' },
@@ -102,7 +105,9 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
       />
       <div ref={setWorkspace} className={`workspace show-${view}`} style={{ '--split': `${shownSplit}%` } as CSSProperties}>
         <div className="pane-left" id="view-panel-pdf" role="tabpanel" aria-labelledby="view-tab-pdf">
-          <PdfViewer ref={viewer} url={api.pdfUrl(id)} />
+          <Suspense fallback={<div className="center muted">PDFを読み込んでいます…</div>}>
+            <PdfViewer ref={viewer} url={api.pdfUrl(id)} />
+          </Suspense>
         </div>
         <PaneDivider value={shownSplit} bounds={bounds} onChange={setSplit} container={workspaceBox} />
         <div className="pane-right" id="view-panel-explain" role="tabpanel" aria-labelledby="view-tab-explain">
