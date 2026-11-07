@@ -14,6 +14,7 @@ from google.genai import types
 from pydantic import ValidationError
 
 from . import config
+from .concepts import clean_concepts, repair_step1
 from .errors import EmptyResponseError
 from .flow import clean_flow
 from .schemas import Answer, QuizRewrites, Step1, Step2, Step3
@@ -92,6 +93,13 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
     try:
         return schema.model_validate_json(resp.text).model_dump(mode="json", by_alias=True)
     except ValidationError:
+        if schema is Step1:
+            # 前提知識の重要度・出どころ・根拠は付加情報。使えない項目だけ外して（既定値になる）検証し直す
+            repaired = repair_step1(json.loads(resp.text))
+            if repaired is None:
+                raise
+            log.warning("repairing invalid concept fields in %s response", schema.__name__)
+            return schema.model_validate(repaired).model_dump(mode="json", by_alias=True)
         # 図解は付け足しなので、flow の中身が不正でも Step 2 の解説は捨てない。flow を外して検証し直す
         raw = json.loads(resp.text)
         if not (isinstance(raw, dict) and raw.get("flow") is not None):
@@ -105,9 +113,16 @@ def step1(pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client |
 - summary はちょうど3項目: 何の問題を扱うか / どう解いたか / 何が分かったか（各1〜2文）
 - concepts は、この論文を読むのに必要な前提知識。論文内で定義される新概念ではなく、読者が事前に知っておくべきもの。
   depends_on で「AはBを知らないと分からない」という依存関係を表す（循環させない）。
+- 各概念に importance を付ける。essential=これが分からないと論文の主張が追えない / recommended=分かると理解が深まる / advanced=発展的で飛ばしてもよい。
+  essential は全体の半分以下にする（全部を同じ重さにしない）。
+- 各概念に category（math / algorithm / concept / tool のいずれか）を付ける。
+- 各概念に origin を付ける。論文の本文に出てくる概念は origin=paper とし、evidence に論文から一字一句そのまま抜き出した引用を1〜2箇所付ける。
+  論文には出てこないが読むのに必要な前提（例: PPO の論文を読むための「期待値」）は origin=ai_inference とし、evidence は空配列にする。論文に書いてあるかのようには書かない。
+- 論文に出てこない前提（ai_inference）は、論文に出てくる概念から数えて2段までに限る（その前提の前提まで。それより遡らない）。
+- first_page は論文内で最初に登場するページ。ai_inference の概念は null にする。
 - sections は論文の節構成とページ範囲。
 - reading_order は初めて読む学生が効率よく理解できる読む順番。"""
-    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step1, level, cli, lang)
+    return clean_concepts(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step1, level, cli, lang))
 
 
 def step2(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:

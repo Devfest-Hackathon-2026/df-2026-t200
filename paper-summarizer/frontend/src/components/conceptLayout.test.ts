@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import type { Concept } from '../api'
 import { step1 } from '../test/fixtures'
-import { COL_GAP, NARROW_NODE_W, NODE_H, NODE_W, PAD, ROW_GAP, edgePaths, layoutConcepts, nodeLabelSize, ovalPath } from './conceptLayout'
+import {
+  CONCEPT_LEVELS,
+  COL_GAP,
+  NARROW_NODE_W,
+  NODE_H,
+  NODE_W,
+  PAD,
+  ROW_GAP,
+  edgePaths,
+  layoutConcepts,
+  nodeLabelSize,
+  ovalPath,
+  filterConcepts,
+  importanceOf,
+  isConceptLevel,
+  isInference,
+} from './conceptLayout'
 
 const concept = (id: string, depends_on: string[] = []): Concept => ({
   id,
@@ -14,7 +30,7 @@ const concept = (id: string, depends_on: string[] = []): Concept => ({
 
 describe('layoutConcepts', () => {
   it('places prerequisites to the left of the concepts that depend on them', () => {
-    const { pos, width, height } = layoutConcepts(step1.concepts)
+    const { pos, width, height } = layoutConcepts(step1.concepts.filter((c) => !isInference(c)))
     expect(pos.get('dot')!.x).toBeLessThan(pos.get('softmax')!.x)
     expect(pos.get('softmax')!.x).toBeLessThan(pos.get('attention')!.x)
     expect(width).toBe(PAD * 2 + 3 * NODE_W + 2 * COL_GAP)
@@ -121,5 +137,34 @@ describe('nodeLabelSize', () => {
     expect(nodeLabelSize('内積')).toBe('')
     expect(nodeLabelSize('Self-Attention')).toBe('long')
     expect(nodeLabelSize('特徴量ベース手法とファインチューニング手法')).toBe('xlong')
+  })
+})
+
+describe('importance filter', () => {
+  const c = (id: string, importance?: Concept['importance']): Concept => ({ ...concept(id), importance })
+  const all = [c('a', 'essential'), c('b', 'recommended'), c('c', 'advanced'), c('d')]
+  const ids = (l: Parameters<typeof filterConcepts>[1]) => filterConcepts(all, l).map((x) => x.id)
+
+  it('keeps concepts up to the chosen level and treats a missing importance as recommended', () => {
+    expect(ids('essential')).toEqual(['a'])
+    expect(ids('recommended')).toEqual(['a', 'b', 'd'])
+    expect(ids('all')).toEqual(['a', 'b', 'c', 'd'])
+    expect(importanceOf(c('x'))).toBe('recommended')
+    expect(importanceOf({ ...concept('x'), importance: 'bogus' as never })).toBe('recommended')
+  })
+
+  it('does not change the given array and validates stored levels', () => {
+    const before = [...all]
+    filterConcepts(all, 'essential')
+    expect(all).toEqual(before)
+    expect(CONCEPT_LEVELS.every(isConceptLevel)).toBe(true)
+    expect(isConceptLevel('x')).toBe(false)
+  })
+
+  it('lays out and draws arrows for what is left even if a prerequisite is hidden', () => {
+    const shown = filterConcepts([c('a', 'advanced'), { ...c('b', 'essential'), depends_on: ['a'] }], 'essential')
+    const layout = layoutConcepts(shown)
+    expect(layout.pos.size).toBe(1)
+    expect(edgePaths(shown, layout)).toEqual([])
   })
 })

@@ -21,6 +21,12 @@ class Origin(str, Enum):
     ai_inference = "ai_inference"  # AI による指摘（要検証）
 
 
+class Importance(str, Enum):
+    essential = "essential"  # 必須
+    recommended = "recommended"  # 推奨
+    advanced = "advanced"  # 発展
+
+
 class AnswerSource(str, Enum):
     paper = "paper"
     general_knowledge = "general_knowledge"
@@ -43,6 +49,11 @@ class Concept(BaseModel):
     why_needed: str = Field(description="この論文を読むのになぜ必要か（1文）")
     first_page: int | None = Field(description="論文内で最初に登場する PDF ページ。登場しなければ null")
     depends_on: list[str] = Field(description="この概念を理解する前提になる他の概念の id")
+    # 以下は後から足した項目。出力が少し外れても Step 1 全体を落とさないよう、すべて既定値を持たせる
+    importance: Importance = Field(default=Importance.recommended, description="essential=必須 / recommended=推奨 / advanced=発展")
+    category: str = Field(default="concept", description="math / algorithm / concept / tool のいずれか")
+    origin: Origin = Field(default=Origin.paper, description="論文に出てくれば paper、論文に出てこない前提知識なら ai_inference")
+    evidence: list[Evidence] = Field(default_factory=list, description="origin=paper なら論文からの引用 1〜2 箇所。ai_inference なら空配列")
 
 
 class SectionInfo(BaseModel):

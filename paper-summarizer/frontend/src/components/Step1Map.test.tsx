@@ -43,7 +43,7 @@ describe('Step1Map', () => {
     expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
     expect(container.querySelector('svg [role=img], svg foreignObject')).toBeNull()
     const list = screen.getByRole('list', { name: '前提知識の概念' })
-    expect(within(list).getAllByRole('button')).toHaveLength(3)
+    expect(within(list).getAllByRole('button')).toHaveLength(4)
     const attention = screen.getByRole('button', { name: /Attention/ })
     attention.focus()
     await userEvent.keyboard('{Enter}')
@@ -106,7 +106,7 @@ describe('Step1Map', () => {
     const items = () => [...container.querySelectorAll<HTMLElement>('.graph-nodes li')]
     expect(items()[0].style.width).toBe(`${NARROW_NODE_W}px`)
     const tops = items().map((li) => parseFloat(li.style.top))
-    expect(tops[1]).toBeGreaterThan(tops[0])
+    expect(tops[tops.length - 1]).toBeGreaterThan(tops[0])
     mq.matches = false
     act(() => listener())
     expect(items()[0].style.width).not.toBe(`${NARROW_NODE_W}px`)
