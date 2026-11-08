@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from . import config, errors, mock, quiz, store
 from .check_service import ConceptCheckService
 from .errors import PaperNotFound, QuotaExceeded, RateLimited
+from .foundations import check_foundations
 from .pdf_utils import extract_pages, normalize, verify_all
 from .quota import DailyQuota
 from .ratelimit import RateLimiter
@@ -114,6 +115,12 @@ def _generate_step(analyzer: Analyzer, key: str, src: PaperSource, results: dict
     if key == "step2":
         return analyzer.step2(src, results["step1"])
     return analyzer.step3(src, results["step1"])
+
+
+def finalize_step(key: str, out: dict[str, Any], norm_pages: list[str]) -> dict[str, Any]:
+    """解析結果を PDF と照合する。Step 1 は、照合の結果に依存する確認（先に読むとよい論文）も行う。デモモードも同じ経路を通る。"""
+    verified = verify_all(out, norm_pages)
+    return check_foundations(verified, norm_pages) if key == "step1" else verified
 
 
 def is_stale(paper: dict[str, Any]) -> bool:
@@ -299,7 +306,7 @@ class PaperService:
                     continue
                 store.update(paper_id, status=f"processing_{key}")
                 log.info("paper=%s %s start (demo=%s)", paper_id, key, paper.demo)
-                results[key] = verify_all(_generate_step(analyzer, key, src, results), src.norm_pages)
+                results[key] = finalize_step(key, _generate_step(analyzer, key, src, results), src.norm_pages)
                 store.set_result(paper_id, key, results[key])
                 log.info("paper=%s %s done", paper_id, key)
             store.update(paper_id, status="done", error=None, analysis_version=config.ANALYSIS_VERSION)

@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from .pdf_utils import normalize
 from .schemas import Foundation
 
 MAX_FOUNDATIONS = 5
@@ -17,8 +18,8 @@ _MAX_TITLE = 300
 _MAX_AUTHORS = 300
 _MAX_REASON = 600
 
-_DOI = re.compile(r"10\.\d{4,9}/[^\s<>\"'\\]+")
-_ARXIV = re.compile(r"\d{4}\.\d{4,5}(v\d+)?")
+_DOI = re.compile(r"10\.[0-9]{4,9}/[^\s<>\"'\\]+")  # \d は全角数字にも一致するので [0-9] を使う
+_ARXIV = re.compile(r"[0-9]{4}\.[0-9]{5}(v[0-9]+)?|[0-9]{4}\.[0-9]{4}(v[0-9]+)?")
 _DOI_PREFIX = re.compile(r"^(https?://(dx\.)?doi\.org/|doi:\s*)", re.IGNORECASE)
 _ARXIV_PREFIX = re.compile(r"^(https?://arxiv\.org/abs/|arxiv:\s*)", re.IGNORECASE)
 
@@ -82,3 +83,31 @@ def clean_foundations(step1: dict[str, Any]) -> dict[str, Any]:
             }
         )
     return {**step1, "foundations": [{**f, "order": i} for i, f in enumerate(items[:MAX_FOUNDATIONS], start=1)]}
+
+
+def _compact(text: str) -> str:
+    """照合用に正規化し、空白もすべて除く（行をまたいで分かれた DOI でも一致させる）。"""
+    return normalize(text).replace(" ", "")
+
+
+def check_foundations(step1: dict[str, Any], norm_pages: list[str]) -> dict[str, Any]:
+    """verify_all の後に呼ぶ。参考文献に載っている論文だけに絞る（プロンプトだけに頼らない）。
+
+    - 根拠が1件も照合に通らない論文は外し、order を 1 から振り直す
+    - doi と arxiv_id は、PDF の本文にその文字列が現れないときは null にする
+    元のデータは変えず、新しい dict を返す。
+    """
+    body = "".join(p.replace(" ", "") for p in norm_pages)
+    kept = []
+    for f in step1.get("foundations") or []:
+        if not any(e.get("verified") is True for e in f.get("evidence") or []):
+            continue
+        doi, arxiv = f.get("doi"), f.get("arxiv_id")
+        kept.append(
+            {
+                **f,
+                "doi": doi if doi and _compact(doi) in body else None,
+                "arxiv_id": arxiv if arxiv and _compact(arxiv) in body else None,
+            }
+        )
+    return {**step1, "foundations": [{**f, "order": i} for i, f in enumerate(kept, start=1)]}

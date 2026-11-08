@@ -26,7 +26,14 @@ export function FoundationPapers({ items }: { items: Foundation[] | undefined })
                 <EvidenceList items={f.evidence ?? []} />
                 <span className="chips foundation-links">
                   {foundationLinks(f).map((l) => (
-                    <a key={l.label} className="chip page" href={l.href} target="_blank" rel="noopener noreferrer">
+                    <a
+                      key={l.label}
+                      className="chip page"
+                      href={l.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${f.title} ${l.label === '検索' ? 'を検索' : `の ${l.label}`}(新しいタブで開く)`}
+                    >
                       {l.label}
                     </a>
                   ))}

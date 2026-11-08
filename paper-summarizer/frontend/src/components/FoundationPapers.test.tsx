@@ -36,6 +36,14 @@ describe('FoundationPapers', () => {
       expect(a.getAttribute('href')).toMatch(/^https:\/\/scholar\.google\.com\/scholar\?q=/)
   })
 
+  it('names each link with the paper title and says it opens in a new tab', () => {
+    render(<FoundationPapers items={foundations} />)
+    expect(screen.getByRole('link', { name: 'Base Paper One の DOI(新しいタブで開く)' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Second Base の arXiv(新しいタブで開く)' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Base Paper One を検索(新しいタブで開く)' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Second Base を検索(新しいタブで開く)' })).toBeInTheDocument()
+  })
+
   it('does not break with missing optional fields', () => {
     const bare = [{ title: 'Only Title', reason: '理由', order: 1 }] as unknown as Foundation[]
     render(<FoundationPapers items={bare} />)
