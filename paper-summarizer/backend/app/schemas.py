@@ -44,7 +44,9 @@ class Confidence(str, Enum):
 
 class Concept(BaseModel):
     id: str = Field(description="英小文字とハイフンのみの短いID（例: softmax）")
-    name: str = Field(description="概念名")
+    name: str = Field(
+        description="概念名。日本語で出すときは「日本語名 (English name)」の形にそろえる（例: 交差エントロピー誤差 (Cross-Entropy Loss)）。定着した日本語名が無いときだけ英語名のみ"
+    )
     description: str = Field(description="対象読者向けの2〜3文の説明")
     why_needed: str = Field(description="この論文を読むのになぜ必要か（1文）")
     first_page: int | None = Field(description="論文内で最初に登場する PDF ページ。登場しなければ null")

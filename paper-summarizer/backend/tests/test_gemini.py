@@ -278,6 +278,14 @@ def test_invalid_stages_still_fail_even_when_flow_is_dropped(fake):
 def test_japanese_output_asks_for_established_terms_and_no_markdown():
     text = gemini.SYSTEM.format(level=gemini.LEVELS["undergrad"], lang=gemini.LANGS["ja"])
     assert "教師なし" in text and "自己回帰" in text and "アーキテクチャ" in text
+    assert "マスク言語モデル" in text
     assert "Markdown" in text
     english = gemini.SYSTEM.format(level=gemini.LEVELS["undergrad"], lang=gemini.LANGS["en"])
     assert "教師なし" not in english
+
+
+def test_concept_names_ask_for_japanese_name_with_english_in_parentheses():
+    # 論文をまたいだ「知っている」は括弧の中の英語名でも照合するので、名前の形をそろえる
+    from app.schemas import Concept
+
+    assert "日本語名 (English name)" in Concept.model_fields["name"].description
