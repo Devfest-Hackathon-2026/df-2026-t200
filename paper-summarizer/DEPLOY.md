@@ -99,7 +99,7 @@ PROJECT_ID=<プロジェクト ID> ./deploy.sh cd-setup
 | `MAX_ANALYSES_PER_DAY` | 30 | 新しい解析と再解析（1回でGeminiを3回呼ぶ）。解析済みのPDFの使い回しは数えない |
 | `MAX_ASKS_PER_DAY` | 150 | 質問（1回ごとにPDF全体をGeminiに送る） |
 | `MAX_QUIZZES_PER_DAY` | 20 | 誤り探しの問題の作成（Geminiを1〜2回呼ぶ）。保存済みの問題を開くだけなら数えない |
-| `MAX_CHECKS_PER_DAY` | 30 | 確認モードの問題の作成（Geminiを1回呼び、PDF全体を送る）。誤り探しの上限とは別に数える。保存済みの問題を開くだけなら数えない |
+| `MAX_CHECKS_PER_DAY` | 30 | 確認モードの問題の作成（Geminiを1回呼び、PDF全体を送る）。誤り探しの上限とは別に数える。保存済みの問題を開くだけなら数えない。`deploy.sh`は10にして渡す |
 | `MAX_UPLOADS_PER_DAY` | 100 | アップロード（解析しない使い回しも含む） |
 | `ASK_GLOBAL_PER_MIN` | 20 | 1分あたりの質問（全論文の合計） |
 

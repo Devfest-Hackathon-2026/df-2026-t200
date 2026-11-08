@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Step1, Step2, Verdict } from '../api'
 import { useElementWidth } from '../hooks/useElementWidth'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
@@ -121,6 +121,11 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
     )
   }
   const set = (id: string, v: Verdict) => setMany({ [id]: v })
+  // 答え合わせの判定。答えている間に手で付けた印は上書きしない（答え合わせの時点でまだ未仕分けの概念だけに付ける）
+  const latestKnowledge = useRef(knowledge)
+  latestKnowledge.current = knowledge
+  const applyJudgement = (verdicts: Record<string, Verdict>) =>
+    setMany(Object.fromEntries(Object.entries(verdicts).filter(([id]) => !latestKnowledge.current[id])))
   const checkTargets = useMemo(() => pickCheckTargets(concepts, knowledge), [concepts, knowledge])
   const clearMemory = () => {
     if (window.confirm('覚えている「知っている」概念をすべて消します。この論文で付けた印はそのままです。よろしいですか？')) setMemory([])
@@ -308,7 +313,7 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
           </p>
         )}
 
-        <ConceptCheck paperId={paperId} concepts={data.concepts} targets={checkTargets} onJudge={setMany} />
+        <ConceptCheck paperId={paperId} concepts={data.concepts} targets={checkTargets} onJudge={applyJudgement} />
 
         {unknown.length > 0 && (
           <div className="unknown-list">

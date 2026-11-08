@@ -128,9 +128,13 @@ class ConceptCheckService:
         rng = random.Random(seq) if paper.demo else self._host.rng
         if not self.limiter.allow(paper.id):
             raise RateLimited
+        try:
+            src = self._host.source(paper)  # PDF の読み込みに失敗したときは、上限を使わない
+        except Exception as e:  # noqa: BLE001
+            log.exception("check source failed paper=%s", paper.id)
+            raise CheckFailed(errors.user_message(e)) from e
         if not self.quota.take():
             raise QuotaExceeded
-        src = self._host.source(paper)
         questions = self._generate(paper, src, targets)
         # 論文の概念の引用を PDF と照合する（一致しなければ verified=False のまま画面に出る）
         questions = {cid: {**q, "evidence": verify_all(q["evidence"], src.norm_pages) if q["evidence"] else None} for cid, q in questions.items()}

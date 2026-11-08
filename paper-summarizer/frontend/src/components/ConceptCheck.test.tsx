@@ -157,4 +157,15 @@ describe('ConceptCheck', () => {
     await userEvent.click(await screen.findByRole('button', { name: '問題に答えて仕分ける' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('本日の利用上限')
   })
+
+  it('moves focus to the heading after the answer is checked', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: view })
+    vi.spyOn(api, 'answerCheck').mockResolvedValue({ check: done })
+    renderCheck()
+    await userEvent.click(await screen.findByRole('radio', { name: '類似度を測る' }))
+    await userEvent.click(screen.getAllByRole('radio', { name: '分からない' })[1])
+    await userEvent.click(screen.getByRole('button', { name: '答え合わせ' }))
+    await screen.findByText('内積は類似度の計算に使う。')
+    expect(screen.getByRole('heading', { name: '確認モード' })).toHaveFocus()
+  })
 })

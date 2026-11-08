@@ -337,6 +337,15 @@ def test_rate_limit_and_daily_quota_raise(service, tmp_path):
         service.check.create(pid, ["c"], force=True)
 
 
+def test_a_pdf_that_cannot_be_read_does_not_spend_the_quota(service, tmp_path):
+    service.check.quota = DailyQuota("c3", 1, directory=tmp_path)
+    pid = _paper()
+    store.pdf_path(pid).unlink()
+    with pytest.raises(CheckFailed):
+        service.check.create(pid, ["a"])
+    assert service.check.quota.take()  # 1 回分が残っている
+
+
 def test_bad_concepts_do_not_spend_the_quota(service, tmp_path):
     service.check.quota = DailyQuota("c1", 1, directory=tmp_path)
     with pytest.raises(CheckBadConcepts):

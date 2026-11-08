@@ -192,4 +192,58 @@ describe('確認モードの仕分け', () => {
     expect(mem.map((r) => r.full)).toContain('概念あ')
     expect(mem.map((r) => r.full)).not.toContain('概念い')
   })
+
+  it('does not overwrite a mark the student set by hand while answering', async () => {
+    const { api } = await import('../api')
+    const q = (id: string, cid: string) => ({
+      id,
+      concept_id: cid,
+      question: `${cid}の問題`,
+      options: ['x1', 'x2', 'x3', '分からない'],
+      general_knowledge: false,
+    })
+    vi.spyOn(api, 'createCheck').mockResolvedValue({
+      check: { id: 'ck', created_at: 't', submitted: false, items: [q('q1', 'a'), q('q2', 'b')], result: null },
+    })
+    const base = {
+      question: '',
+      options: [],
+      chosen: 0,
+      correct_index: 0,
+      dont_know: false,
+      explanation: '解説文です',
+      evidence: null,
+      general_knowledge: false,
+    }
+    vi.spyOn(api, 'answerCheck').mockResolvedValue({
+      check: {
+        id: 'ck',
+        created_at: 't',
+        submitted: true,
+        items: [],
+        result: {
+          correct: 0,
+          verdicts: { a: 'unknown', b: 'unknown' },
+          items: [
+            { ...base, id: 'q1', concept_id: 'a', is_correct: false },
+            { ...base, id: 'q2', concept_id: 'b', is_correct: false },
+          ],
+        },
+      },
+    })
+    render(<Step1Map data={data([mk('a', '概念あ'), mk('b', '概念い')])} paperId="pm" />)
+    await userEvent.click(await screen.findByRole('button', { name: '問題に答えて仕分ける' }))
+    await screen.findByText('aの問題')
+    // 答えている間に、概念あを手で「知っている」にする
+    const nodes = within(screen.getByRole('list', { name: '前提知識の概念' }))
+    await userEvent.click(nodes.getByRole('button', { name: /^概念あ/ }))
+    await userEvent.click(screen.getByRole('button', { name: '知っている' }))
+    await userEvent.click(screen.getAllByRole('radio', { name: 'x1' })[0])
+    await userEvent.click(screen.getAllByRole('radio', { name: 'x1' })[1])
+    await userEvent.click(screen.getByRole('button', { name: '答え合わせ' }))
+    expect(await screen.findAllByText('解説文です')).toHaveLength(2)
+    expect(nodes.getByRole('button', { name: /^概念あ/ })).toHaveTextContent('知っている') // 手で付けた印のまま
+    expect(nodes.getByRole('button', { name: /^概念い/ })).toHaveTextContent('知らない')
+    expect(screen.getAllByText('判定は「知らない」')).toHaveLength(2) // 結果の画面には判定をそのまま出す
+  })
 })

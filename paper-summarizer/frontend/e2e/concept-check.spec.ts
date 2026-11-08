@@ -32,11 +32,11 @@ test('sorts concepts by answering check questions, on a phone width too', async 
     await (i === 0 ? options.last() : options.first()).check()
   }
   // 横にはみ出さない
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  expect(await page.locator('html').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
   await page.getByRole('button', { name: '答え合わせ' }).click()
   await expect(page.locator('.check-row').first()).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText(/判定は「知らない」/).first()).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  expect(await page.locator('html').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
 
   // 印が付き、開き直しても残る。結果は同じ問題のまま（作り直さない）
   await expect(page.locator('.node-tag.unknown').first()).toBeVisible()

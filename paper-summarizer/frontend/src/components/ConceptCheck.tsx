@@ -23,6 +23,8 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const request = useRef<AbortController | null>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const answered = useRef(false) // 回答した直後だけ、結果の見出しへフォーカスを移す
   const uid = useId()
   const nameOf = (id: string) => concepts.find((c) => c.id === id)?.name ?? id
 
@@ -39,6 +41,12 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
     return () => ctl.abort()
   }, [paperId])
   useEffect(() => () => request.current?.abort(), [])
+  useEffect(() => {
+    if (answered.current && check?.submitted && headingRef.current) {
+      headingRef.current.focus()
+      answered.current = false
+    }
+  }, [check])
 
   const run = async (label: string, job: (signal: AbortSignal) => Promise<Check>, onDone?: (next: Check) => void) => {
     request.current?.abort()
@@ -80,6 +88,7 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
       '答え合わせをしています…',
       (signal) => api.answerCheck(paperId, check.id, answers, signal).then((r) => r.check),
       (next) => {
+        answered.current = true
         if (next.result) onJudge(next.result.verdicts)
         setDraft(EMPTY_CHECK_DRAFT)
       },
@@ -208,7 +217,9 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
 
   return (
     <section className="concept-check sheet" aria-label="確認モード">
-      <h3>確認モード</h3>
+      <h3 ref={headingRef} tabIndex={-1}>
+        確認モード
+      </h3>
       {notice}
       {body}
       {errorBox}
