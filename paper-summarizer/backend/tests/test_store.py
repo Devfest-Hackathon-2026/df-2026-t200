@@ -214,3 +214,13 @@ def test_find_by_hash_prefers_the_newest_record():
     middle = store.new_id()
     store.save(_paper(middle, sha256="h4", level="undergrad", status="done", created_at="2026-11-05T00:00:00+00:00"))
     assert store.find_by_hash("h4", "undergrad") == newest
+
+
+def test_find_by_hash_any_version_returns_the_newest_done_record_of_any_version():
+    old = store.new_id()
+    store.save({**_paper(old, sha256="h5", level="undergrad", status="done", created_at="2026-11-01T00:00:00+00:00"), "analysis_version": 1})
+    newer = store.new_id()
+    store.save({**_paper(newer, sha256="h5", level="undergrad", status="done", created_at="2026-11-02T00:00:00+00:00"), "analysis_version": 2})
+    store.save(_paper(store.new_id(), sha256="h5", level="undergrad", status="failed", created_at="2026-11-03T00:00:00+00:00"))
+    assert store.find_by_hash("h5", "undergrad", any_version=True) == newer
+    assert store.find_by_hash("h5", "undergrad", "en", any_version=True) is None

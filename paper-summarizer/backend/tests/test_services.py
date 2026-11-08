@@ -291,3 +291,29 @@ def test_new_analysis_records_the_version_when_created():
     pid, reused = svc.create(data=data, pages=pdf_utils.extract_pages(data), filename="x.pdf", level="undergrad", sha256="new")
     assert reused is False
     assert store.load(pid)["analysis_version"] == config.ANALYSIS_VERSION
+
+
+class _NoQuota:
+    def take(self) -> bool:
+        return False
+
+
+def test_older_results_are_reused_when_the_daily_limit_is_reached():
+    # デモ用の論文は版を上げた直後でも、上限に達していれば古い版の結果を出す（エラーにしない）
+    started = []
+    svc = PaperService(analyzers={True: FakeAnalyzer(), False: FakeAnalyzer()}, starter=started.append)
+    svc.analysis_quota = _NoQuota()
+    _new_paper(demo=False, status="done", results={"step1": {"old": True}}, analysis_version=config.ANALYSIS_VERSION - 1)
+    data = make_pdf(3)
+    pid, reused = svc.create(data=data, pages=pdf_utils.extract_pages(data), filename="x.pdf", level="undergrad", sha256="h")
+    assert reused is True
+    assert started == []
+    assert store.load(pid)["results"] == {"step1": {"old": True}}
+
+
+def test_daily_limit_still_applies_when_there_is_no_older_result():
+    svc = PaperService(analyzers={True: FakeAnalyzer(), False: FakeAnalyzer()}, starter=lambda _p: None)
+    svc.analysis_quota = _NoQuota()
+    data = make_pdf(3)
+    with pytest.raises(services.QuotaExceeded):
+        svc.create(data=data, pages=pdf_utils.extract_pages(data), filename="x.pdf", level="undergrad", sha256="nothing")

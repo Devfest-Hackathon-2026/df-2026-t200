@@ -186,8 +186,11 @@ def list_papers(owner: str | None) -> list[dict[str, Any]]:
     return sorted(items, key=lambda x: x["created_at"], reverse=True)
 
 
-def find_by_hash(sha256: str, level: str, lang: str = "ja") -> str | None:
-    """同じ PDF・説明のレベル・言語で、今の版（ANALYSIS_VERSION）の解析を終えた記録のうち、最も新しいものの id。"""
+def find_by_hash(sha256: str, level: str, lang: str = "ja", *, any_version: bool = False) -> str | None:
+    """同じ PDF・説明のレベル・言語で、今の版（ANALYSIS_VERSION）の解析を終えた記録のうち、最も新しいものの id。
+
+    any_version=True なら版を問わない（解析の上限に達したときに、古い版の結果で代わりに出すため）。
+    """
     found = [
         p
         for p in _iter_papers()
@@ -195,6 +198,6 @@ def find_by_hash(sha256: str, level: str, lang: str = "ja") -> str | None:
         and p.get("level") == level
         and p.get("lang", "ja") == lang
         and p.get("status") == "done"
-        and p.get("analysis_version") == ANALYSIS_VERSION
+        and (any_version or p.get("analysis_version") == ANALYSIS_VERSION)
     ]
     return max(found, key=lambda p: str(p.get("created_at", "")))["id"] if found else None
