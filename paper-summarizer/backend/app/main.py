@@ -17,8 +17,18 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
 from . import config, store
+from .check_service import (
+    CheckAlreadyAnswered,
+    CheckBadAnswer,
+    CheckBadConcepts,
+    CheckBusy,
+    CheckFailed,
+    CheckNotAnswered,
+    CheckNotFound,
+    CheckNotReady,
+)
 from .pdf_utils import TooManyPages, TooMuchText, extract_pages
-from .schemas import AskRequest, QuizAnswerRequest, QuizCreateRequest
+from .schemas import AskRequest, CheckAnswerRequest, CheckCreateRequest, QuizAnswerRequest, QuizCreateRequest
 from .services import (
     AskFailed,
     PaperNotFound,
@@ -58,7 +68,7 @@ QUOTA_MESSAGE = "本日の利用上限に達しました。時間をおいてか
 
 
 def _public(paper: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in paper.items() if k not in ("sha256", "owner", "quiz")}  # quiz は答えを含むので、専用の API だけが返す
+    return {k: v for k, v in paper.items() if k not in ("sha256", "owner", "quiz", "check")}  # quiz と check は答えを含むので、専用の API だけが返す
 
 
 def _load_or_404(paper_id: str) -> dict[str, Any]:
@@ -232,4 +242,51 @@ def answer_quiz(paper_id: str, quiz_id: str, req: QuizAnswerRequest, service: Se
     except QuizAlreadyAnswered as e:
         raise HTTPException(409, "この問題にはすでに回答しています") from e
     except QuizBadAnswer as e:
+        raise HTTPException(400, "回答の内容が正しくありません") from e
+
+
+@app.get("/api/papers/{paper_id}/check")
+def get_check(paper_id: str, service: Service) -> dict[str, Any]:
+    _load_or_404(paper_id)
+    try:
+        return {"check": service.check.get(paper_id)}
+    except PaperNotFound as e:
+        raise HTTPException(404, "論文が見つかりません") from e
+
+
+@app.post("/api/papers/{paper_id}/check")
+def create_check(paper_id: str, req: CheckCreateRequest, service: Service) -> dict[str, Any]:
+    _load_or_404(paper_id)
+    try:
+        return {"check": service.check.create(paper_id, req.concept_ids, force=req.force)}
+    except PaperNotFound as e:
+        raise HTTPException(404, "論文が見つかりません") from e
+    except CheckNotReady as e:
+        raise HTTPException(409, "前提知識マップができてから確認問題を作れます") from e
+    except CheckBadConcepts as e:
+        raise HTTPException(400, "問題にする概念の指定が正しくありません") from e
+    except CheckNotAnswered as e:
+        raise HTTPException(409, "先に答え合わせをしてください") from e
+    except CheckBusy as e:
+        raise HTTPException(409, "問題を作っています。少し待ってからもう一度お試しください") from e
+    except RateLimited as e:
+        raise HTTPException(429, "問題を作る回数が多すぎます。1分ほど待ってからもう一度お試しください。") from e
+    except QuotaExceeded as e:
+        raise HTTPException(429, QUOTA_MESSAGE) from e
+    except CheckFailed as e:
+        raise HTTPException(502, e.message) from e
+
+
+@app.post("/api/papers/{paper_id}/check/{check_id}/answer")
+def answer_check(paper_id: str, check_id: str, req: CheckAnswerRequest, service: Service) -> dict[str, Any]:
+    _load_or_404(paper_id)
+    try:
+        return {"check": service.check.answer(paper_id, check_id, req.answers)}
+    except PaperNotFound as e:
+        raise HTTPException(404, "論文が見つかりません") from e
+    except CheckNotFound as e:
+        raise HTTPException(404, "この問題は見つかりません。新しい問題に置き換わった可能性があります") from e
+    except CheckAlreadyAnswered as e:
+        raise HTTPException(409, "この問題にはすでに回答しています") from e
+    except CheckBadAnswer as e:
         raise HTTPException(400, "回答の内容が正しくありません") from e

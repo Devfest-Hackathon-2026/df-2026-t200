@@ -58,6 +58,7 @@ STALE_AFTER_SEC = int(os.getenv("STALE_AFTER_SEC", "600"))
 ASK_RATE_PER_MIN = int(os.getenv("ASK_RATE_PER_MIN", "10"))
 RETRY_RATE_PER_MIN = int(os.getenv("RETRY_RATE_PER_MIN", "3"))
 QUIZ_RATE_PER_MIN = int(os.getenv("QUIZ_RATE_PER_MIN", "3"))
+CHECK_RATE_PER_MIN = int(os.getenv("CHECK_RATE_PER_MIN", "3"))
 
 # サービス全体の上限（認証がないので、論文ごとの制限だけでは論文を増やして回避できる）。
 # 1日の上限は直近24時間の回数で数え、QUOTA_DIR に残す。0 にするとその操作を止められる（緊急停止）。
@@ -67,6 +68,9 @@ MAX_UPLOADS_PER_DAY = int(os.getenv("MAX_UPLOADS_PER_DAY", "100"))
 MAX_ANALYSES_PER_DAY = int(os.getenv("MAX_ANALYSES_PER_DAY", "30"))  # 解析と再解析（Gemini を3回呼ぶ）
 MAX_ASKS_PER_DAY = int(os.getenv("MAX_ASKS_PER_DAY", "150"))  # 質問（毎回 PDF 全体を送る）
 MAX_QUIZZES_PER_DAY = int(os.getenv("MAX_QUIZZES_PER_DAY", "20"))  # 誤り探しの問題の作成（Gemini を1〜2回呼ぶ）
+# 確認モードの問題の作成（Gemini を1回呼ぶが、毎回 PDF 全体を送るので質問と同じ重さ）。誤り探しの上限とは共有しない:
+# 共有すると、片方を使い切っただけでもう片方も止まる。費用の大きさも違う（誤り探しは本文の抜粋だけを送る）ので別に数える
+MAX_CHECKS_PER_DAY = int(os.getenv("MAX_CHECKS_PER_DAY", "30"))
 ASK_GLOBAL_PER_MIN = int(os.getenv("ASK_GLOBAL_PER_MIN", "20"))
 # 同時に受け付けるアップロード（PDF をメモリに読むので、1GiB のインスタンスが溢れないようにする）
 MAX_CONCURRENT_UPLOADS = int(os.getenv("MAX_CONCURRENT_UPLOADS", "3"))

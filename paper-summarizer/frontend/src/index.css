@@ -2025,3 +2025,91 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 .learning-path li {
   margin: 4px 0;
 }
+
+/* 確認モード（前提知識の仕分け） */
+.concept-check {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  min-width: 0;
+}
+.concept-check h3 {
+  margin: 0;
+}
+.check-notice {
+  margin: 0;
+}
+.check-rows {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.check-row {
+  border: 1px solid #d5d8db;
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.check-row.ok {
+  border-color: var(--blue);
+}
+.check-row.ng {
+  border-color: #b3261e;
+}
+.check-row p {
+  margin: 4px 0;
+}
+.check-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.check-fieldset legend {
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.check-q-text {
+  font-weight: 400;
+}
+.check-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 4px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.check-options {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+}
+.check-options li {
+  border: 1px solid #e1e4e7;
+  border-radius: 6px;
+  padding: 4px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+.check-options li.correct {
+  border-color: var(--blue);
+  background: #f2f7ff;
+}
+.check-options li.chosen:not(.correct) {
+  border-color: #b3261e;
+}
+@media (max-width: 900px) {
+  .concept-check .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}

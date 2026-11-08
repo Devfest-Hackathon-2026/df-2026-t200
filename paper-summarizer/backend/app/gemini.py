@@ -17,7 +17,7 @@ from . import config
 from .concepts import clean_concepts, clean_equation_concepts, repair_equation_concepts, repair_step1
 from .errors import EmptyResponseError
 from .flow import clean_flow
-from .schemas import Answer, QuizRewrites, Step1, Step2, Step3
+from .schemas import Answer, CheckQuestions, QuizRewrites, Step1, Step2, Step3
 
 log = logging.getLogger("paper")
 
@@ -228,3 +228,22 @@ def quiz_rewrite(targets: list[dict[str, Any]], level: str, *, lang: str = "ja",
 - 元の文と同じ言語・文体にする。誤りだと分かる注意書きや「（誤）」のような印は付けない。
 - 全部の id について1つずつ返す。"""
     return _generate(config.QA_MODEL, [prompt], QuizRewrites, level, cli, lang)
+
+
+def concept_check(
+    pdf_bytes: bytes, targets: list[dict[str, Any]], level: str, *, lang: str = "ja", cli: genai.Client | None = None
+) -> dict[str, Any]:
+    """前提知識の確認問題（1概念1問の3択。「分からない」はサーバーが足す）を作らせる。概念の名前や説明は論文由来なのでタグで囲んで渡す。"""
+    context = json.dumps([{k: t.get(k) for k in ("id", "name", "description", "why_needed", "origin")} for t in targets], ensure_ascii=False)
+    prompt = f"""学生が論文を読む前に、前提知識を自分が理解しているかを確かめるための確認問題を作ってください。
+対象の概念{DOC_RULE}:
+{_fence("concepts", context)}
+
+- 各概念について1問ずつ、選択肢がちょうど3つの問題を作る。concept_id は対象の id をそのまま使う。
+- 問題は、概念の意味や使いどころ、似た概念との違いを問う。用語の定義をそのまま当てさせる問題にはしない。
+- 正しい選択肢は1つだけ。ほかの2つはもっともらしいが明確に誤りで、3つは互いに別の内容にする。「分からない」は選択肢に入れない（システムが足す）。
+- correct_index は正しい選択肢の番号（0始まり）。正解の位置を偏らせない。
+- explanation は、なぜその選択肢が正しいかを2〜3文で。
+- origin=paper の概念は、添付の論文の中でその概念が使われている箇所を evidence に1つ入れる。page は PDF の物理ページ番号、quote は論文から一字一句そのまま抜き出す（言い換えない）。問題と解説は、その箇所と矛盾しないようにする。
+- origin=ai_inference の概念は論文に出てこない。evidence は空配列にして、一般知識で答えられる問題にする。"""
+    return _generate(config.QA_MODEL, [_pdf_part(pdf_bytes), prompt], CheckQuestions, level, cli, lang)

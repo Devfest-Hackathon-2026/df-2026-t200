@@ -1,6 +1,12 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterEach, vi } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
+import { api } from '../api'
+
+// 確認モードの保存済み問題の取得は、既定では何も無い扱いにする（各テストで必要なら上書きする）
+beforeEach(() => {
+  vi.spyOn(api, 'getCheck').mockResolvedValue({ check: null })
+})
 
 afterEach(() => {
   cleanup()

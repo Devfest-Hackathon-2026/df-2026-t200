@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { Step1, Step2 } from '../api'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Step1, Step2, Verdict } from '../api'
 import { useElementWidth } from '../hooks/useElementWidth'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { EvidenceList, PageChip } from '../jump'
@@ -14,6 +14,8 @@ import {
   ovalPath,
   type ConceptLevel,
 } from './conceptLayout'
+import { ConceptCheck } from './ConceptCheck'
+import { pickCheckTargets } from './conceptCheck'
 import { equationsUsing } from './equationLinks'
 import { forget, isMemory, KNOWN_CONCEPTS_KEY, rememberedIds, rememberKnown, type NameRecord } from './knownConcepts'
 import { learningPath } from './learningPath'
@@ -106,12 +108,25 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
   // 順序そのものは全概念の依存で決めるので、表示範囲を変えても前後関係は変わらない
   const path = useMemo(() => learningPath(data.concepts, new Set(unknown.map((c) => c.id))), [data.concepts, unknown])
   const byId = useMemo(() => new Map(data.concepts.map((c) => [c.id, c])), [data.concepts])
-  const set = (id: string, v: 'known' | 'unknown') => {
-    setKnowledge((k) => ({ ...k, [id]: v }))
-    const name = byId.get(id)?.name
+  // 印を付ける唯一の経路。手で押したときも、確認モードの答え合わせのあとも、ここを通る
+  const setMany = (verdicts: Record<string, Verdict>) => {
+    const entries = Object.entries(verdicts).filter(([id]) => byId.has(id))
+    setKnowledge((k) => ({ ...k, ...Object.fromEntries(entries) }))
     // 「知らない」にしたら覚えから外す（前の論文での「知っている」を持ち越さない）
-    if (name) setMemory((m) => (v === 'known' ? rememberKnown(m, name) : forget(m, name)))
+    setMemory((m) =>
+      entries.reduce((acc, [id, v]) => {
+        const name = byId.get(id)!.name
+        return v === 'known' ? rememberKnown(acc, name) : forget(acc, name)
+      }, m),
+    )
   }
+  const set = (id: string, v: Verdict) => setMany({ [id]: v })
+  // 答え合わせの判定。答えている間に手で付けた印は上書きしない（答え合わせの時点でまだ未仕分けの概念だけに付ける）
+  const latestKnowledge = useRef(knowledge)
+  latestKnowledge.current = knowledge
+  const applyJudgement = (verdicts: Record<string, Verdict>) =>
+    setMany(Object.fromEntries(Object.entries(verdicts).filter(([id]) => !latestKnowledge.current[id])))
+  const checkTargets = useMemo(() => pickCheckTargets(concepts, knowledge), [concepts, knowledge])
   const clearMemory = () => {
     if (window.confirm('覚えている「知っている」概念をすべて消します。この論文で付けた印はそのままです。よろしいですか？')) setMemory([])
   }
@@ -297,6 +312,8 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
             </button>
           </p>
         )}
+
+        <ConceptCheck paperId={paperId} concepts={data.concepts} targets={checkTargets} onJudge={applyJudgement} />
 
         {unknown.length > 0 && (
           <div className="unknown-list">
