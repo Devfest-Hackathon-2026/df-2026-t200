@@ -240,7 +240,9 @@ class QuizAnswerRequest(BaseModel):
 class CheckQuestion(BaseModel):
     concept_id: str = Field(description="渡された概念の id（そのまま返す）")
     question: str = Field(description="その概念の意味や使いどころを問う問題文")
-    choices: list[str] = Field(description="ちょうど3つの選択肢。正しいものは1つだけで、互いに別の内容にする。「分からない」は入れない")
+    choices: list[str] = Field(
+        description="ちょうど3つの選択肢。正しいものは1つだけで、互いに別の内容にする。文字数と詳しさをそろえ、正しいものだけを長くしない。「分からない」は入れない"
+    )
     correct_index: int = Field(description="choices の中の正しい選択肢の番号（0始まり）")
     explanation: str = Field(description="なぜその選択肢が正しいかの解説（2〜3文）")
     evidence: list[Evidence] = Field(
