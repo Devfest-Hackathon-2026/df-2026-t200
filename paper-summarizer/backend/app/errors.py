@@ -38,3 +38,15 @@ def user_message(e: Exception) -> str:
     if isinstance(e, EmptyResponseError | ValidationError):
         return BAD_RESPONSE
     return GENERIC
+
+
+class QuotaExceeded(Exception):
+    """サービス全体の1日の上限に達した。"""
+
+
+class PaperNotFound(Exception):
+    """処理の途中で論文の記録が消えた。"""
+
+
+class RateLimited(Exception):
+    """論文ごとの1分あたりの回数制限に達した。"""

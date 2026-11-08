@@ -17,6 +17,8 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from . import config, errors, mock, quiz, store
+from .check_service import ConceptCheckService
+from .errors import PaperNotFound, QuotaExceeded, RateLimited
 from .pdf_utils import extract_pages, normalize, verify_all
 from .quota import DailyQuota
 from .ratelimit import RateLimiter
@@ -43,6 +45,7 @@ class Analyzer(Protocol):
     def step3(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]: ...
     def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]: ...
     def rewrite(self, paper: Paper, targets: list[dict[str, Any]]) -> dict[str, Any]: ...
+    def check(self, src: PaperSource, targets: list[dict[str, Any]]) -> dict[str, Any]: ...
 
 
 class DemoAnalyzer:
@@ -62,6 +65,9 @@ class DemoAnalyzer:
 
     def rewrite(self, paper: Paper, targets: list[dict[str, Any]]) -> dict[str, Any]:
         return mock.quiz_rewrite(targets, paper.lang)
+
+    def check(self, src: PaperSource, targets: list[dict[str, Any]]) -> dict[str, Any]:
+        return mock.concept_check(src.pages, targets)
 
 
 class GeminiAnalyzer:
@@ -98,6 +104,9 @@ class GeminiAnalyzer:
     def rewrite(self, paper: Paper, targets: list[dict[str, Any]]) -> dict[str, Any]:
         return self._gemini().quiz_rewrite(targets, paper.level, lang=paper.lang, cli=self._cli())
 
+    def check(self, src: PaperSource, targets: list[dict[str, Any]]) -> dict[str, Any]:
+        return self._gemini().concept_check(src.pdf_bytes, targets, src.paper.level, lang=src.paper.lang, cli=self._cli())
+
 
 def _generate_step(analyzer: Analyzer, key: str, src: PaperSource, results: dict[str, Any]) -> dict[str, Any]:
     if key == "step1":
@@ -122,18 +131,6 @@ def retryable(paper: dict[str, Any]) -> bool:
     if status == "failed":
         return True
     return (status == "queued" or status.startswith("processing_")) and is_stale(paper)
-
-
-class QuotaExceeded(Exception):
-    """サービス全体の1日の上限に達した。"""
-
-
-class PaperNotFound(Exception):
-    """処理の途中で論文の記録が消えた。"""
-
-
-class RateLimited(Exception):
-    """論文ごとの1分あたりの回数制限に達した。"""
 
 
 class QuizNotReady(Exception):
@@ -194,7 +191,7 @@ class PaperService:
         self.ask_limiter = RateLimiter(config.ASK_RATE_PER_MIN, 60)
         self.retry_limiter = RateLimiter(config.RETRY_RATE_PER_MIN, 60)
         self.quiz_limiter = RateLimiter(config.QUIZ_RATE_PER_MIN, 60)
-        self._rng = rng or random.SystemRandom()
+        self.rng = rng or random.SystemRandom()
         self._quiz_making: set[str] = set()  # 問題を作っている最中の論文（同じ論文の同時の作成で上限を二重に使わない）
         self._quiz_making_lock = threading.Lock()
         # サービス全体の上限（論文を増やしても回避できない）
@@ -203,13 +200,14 @@ class PaperService:
         self.analysis_quota = DailyQuota("analyses", config.MAX_ANALYSES_PER_DAY, directory=config.QUOTA_DIR)
         self.ask_quota = DailyQuota("asks", config.MAX_ASKS_PER_DAY, directory=config.QUOTA_DIR)
         self.quiz_quota = DailyQuota("quizzes", config.MAX_QUIZZES_PER_DAY, directory=config.QUOTA_DIR)
+        self.check = ConceptCheckService(self)  # 確認モード。上限は誤り探しと別に持つ
 
     # ---------- 材料 ----------
 
     def analyzer_for(self, paper: Paper) -> Analyzer:
         return self.analyzers[paper.demo]
 
-    def _source(self, paper: Paper) -> PaperSource:
+    def source(self, paper: Paper) -> PaperSource:
         pdf_bytes = store.get_pdf_bytes(paper.id)
         cached = store.load_pages(paper.id)
         if cached is None:  # アップロード時に保存していない古い論文だけ、ここで1回抽出して保存する
@@ -293,7 +291,7 @@ class PaperService:
             paper = Paper.model_validate(raw)
             if paper.status == "done":
                 return
-            src = self._source(paper)
+            src = self.source(paper)
             analyzer = self.analyzer_for(paper)
             results = dict(paper.results)
             for key in STEP_KEYS:
@@ -337,7 +335,7 @@ class PaperService:
         if raw is None:
             raise PaperNotFound(paper_id)
         paper = Paper.model_validate(raw)
-        src = self._source(paper)
+        src = self.source(paper)
         try:
             out = self.analyzer_for(paper).ask(src, question, paper.messages, current_step)
         except Exception as e:  # noqa: BLE001
@@ -390,7 +388,7 @@ class PaperService:
     def _make_quiz(self, paper: Paper, existing: dict[str, Any] | None) -> dict[str, Any]:
         seq = (existing or {}).get("seq", 0) + 1
         # デモモードは問題をいつも同じにする（e2e のため）。回数ごとには変える
-        rng = random.Random(seq) if paper.demo else self._rng
+        rng = random.Random(seq) if paper.demo else self.rng
         pool = quiz.candidates(paper.results, rng, require_overlap=not paper.demo)
         if len(pool) < quiz.MIN_SENTENCES:
             raise QuizTooSmall

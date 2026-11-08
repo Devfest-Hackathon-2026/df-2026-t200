@@ -288,3 +288,32 @@ def quiz_rewrite(targets: list[dict[str, Any]], lang: str = "ja") -> dict[str, A
             }
         )
     return {"rewrites": out}
+
+
+def concept_check(pages: list[str], targets: list[dict[str, Any]]) -> dict[str, Any]:
+    """デモモードの確認問題。いつも同じ内容で、正解の位置だけ概念の順に変える。論文の概念の引用は PDF の実際の文から取る。"""
+    time.sleep(0.5)
+    s = _snippets(pages)
+    questions = []
+    for k, t in enumerate(targets):
+        name = t["name"]
+        questions.append(
+            {
+                "concept_id": t["id"],
+                "question": f"【デモ】{name}について、正しい説明はどれですか。",
+                "choices": [
+                    f"【デモ】{name}の正しい説明です。",
+                    f"【デモ】{name}とは関係のない説明です。",
+                    f"【デモ】{name}の働きを取り違えた説明です。",
+                ],
+                "correct_index": k % 3,
+                "explanation": f"【デモ】{name}の正しい説明を選びます。実際の確認問題は、Gemini の認証情報を設定すると論文に基づいて作られます。",
+                "evidence": _ev(s, k) if t.get("origin") == "paper" else [],
+            }
+        )
+    # 正解を correct_index の位置に動かす（先頭が正解の並びから、並べ替える）
+    for q in questions:
+        good = q["choices"][0]
+        rest = q["choices"][1:]
+        q["choices"] = [*rest[: q["correct_index"]], good, *rest[q["correct_index"] :]]
+    return {"questions": questions}

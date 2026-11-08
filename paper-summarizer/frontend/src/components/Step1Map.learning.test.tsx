@@ -133,3 +133,63 @@ describe('知っている概念の記憶', () => {
     set.mockRestore()
   })
 })
+
+describe('確認モードの仕分け', () => {
+  it('marks concepts through the same path as the manual buttons, including the memory', async () => {
+    const { api } = await import('../api')
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: null })
+    const create = vi.spyOn(api, 'createCheck').mockResolvedValue({
+      check: {
+        id: 'ck',
+        created_at: 't',
+        submitted: false,
+        items: [
+          { id: 'q1', concept_id: 'a', question: 'Aの問題', options: ['x1', 'x2', 'x3', '分からない'], general_knowledge: false },
+          { id: 'q2', concept_id: 'b', question: 'Bの問題', options: ['y1', 'y2', 'y3', '分からない'], general_knowledge: false },
+        ],
+        result: null,
+      },
+    })
+    const base = {
+      question: '',
+      options: [],
+      chosen: 0,
+      correct_index: 0,
+      dont_know: false,
+      explanation: '解説文です',
+      evidence: null,
+      general_knowledge: false,
+    }
+    vi.spyOn(api, 'answerCheck').mockResolvedValue({
+      check: {
+        id: 'ck',
+        created_at: 't',
+        submitted: true,
+        items: [],
+        result: {
+          correct: 1,
+          verdicts: { a: 'known', b: 'unknown' },
+          items: [
+            { ...base, id: 'q1', concept_id: 'a', is_correct: true },
+            { ...base, id: 'q2', concept_id: 'b', is_correct: false },
+          ],
+        },
+      },
+    })
+    localStorage.setItem('knowledge:pc', JSON.stringify({ c: 'known' }))
+    render(<Step1Map data={data([mk('a', '概念あ'), mk('b', '概念い'), mk('c', '概念う')])} paperId="pc" />)
+    await userEvent.click(await screen.findByRole('button', { name: '問題に答えて仕分ける' }))
+    expect(create).toHaveBeenCalledWith('pc', ['a', 'b'], false, expect.any(AbortSignal)) // 仕分け済みの c は対象外
+    await userEvent.click(await screen.findByRole('radio', { name: 'x1' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'y2' }))
+    await userEvent.click(screen.getByRole('button', { name: '答え合わせ' }))
+    expect(await screen.findAllByText('解説文です')).toHaveLength(2)
+    const nodes = within(screen.getByRole('list', { name: '前提知識の概念' }))
+    expect(nodes.getByRole('button', { name: /^概念あ/ })).toHaveTextContent('知っている')
+    expect(nodes.getByRole('button', { name: /^概念い/ })).toHaveTextContent('知らない')
+    flushStorage()
+    const mem = JSON.parse(localStorage.getItem(MEM) ?? '[]') as { full: string }[]
+    expect(mem.map((r) => r.full)).toContain('概念あ')
+    expect(mem.map((r) => r.full)).not.toContain('概念い')
+  })
+})

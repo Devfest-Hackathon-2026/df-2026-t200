@@ -99,18 +99,19 @@ PROJECT_ID=<プロジェクト ID> ./deploy.sh cd-setup
 | `MAX_ANALYSES_PER_DAY` | 30 | 新しい解析と再解析（1回でGeminiを3回呼ぶ）。解析済みのPDFの使い回しは数えない |
 | `MAX_ASKS_PER_DAY` | 150 | 質問（1回ごとにPDF全体をGeminiに送る） |
 | `MAX_QUIZZES_PER_DAY` | 20 | 誤り探しの問題の作成（Geminiを1〜2回呼ぶ）。保存済みの問題を開くだけなら数えない |
+| `MAX_CHECKS_PER_DAY` | 30 | 確認モードの問題の作成（Geminiを1回呼び、PDF全体を送る）。誤り探しの上限とは別に数える。保存済みの問題を開くだけなら数えない |
 | `MAX_UPLOADS_PER_DAY` | 100 | アップロード（解析しない使い回しも含む） |
 | `ASK_GLOBAL_PER_MIN` | 20 | 1分あたりの質問（全論文の合計） |
 
 Geminiが答える前に考える量は `THINKING_LEVEL`（既定 `low`）で決める。考えた分も出力として課金されるため、既定より費用と時間を下げている。空にするとモデルの既定に任せる。
 
-`deploy.sh api`は、解析・質問・誤り探しの上限を毎回`MAX_ANALYSES_PER_DAY`（既定10）、`MAX_ASKS_PER_DAY`（既定50）、`MAX_QUIZZES_PER_DAY`（既定10）で上書きする。既定は審査期間に合わせて低くしてある。変えるときは`MAX_ANALYSES_PER_DAY=30 PROJECT_ID=... ./deploy.sh api`のように渡す。
+`deploy.sh api`は、解析・質問・誤り探し・確認モードの上限を毎回`MAX_ANALYSES_PER_DAY`（既定10）、`MAX_ASKS_PER_DAY`（既定50）、`MAX_QUIZZES_PER_DAY`（既定10）、`MAX_CHECKS_PER_DAY`（既定10）で上書きする。既定は審査期間に合わせて低くしてある。変えるときは`MAX_ANALYSES_PER_DAY=30 PROJECT_ID=... ./deploy.sh api`のように渡す。
 
-Geminiを止めたいときは、上限を0にして環境変数だけを書き換える。イメージは作り直さないので、すぐに反映される。ただし`deploy.sh api`は上限を毎回上書きするので、止めている間にmainへマージすると、CDのデプロイで既定の10回・50回・10回に戻る。止めている間はマージしない。
+Geminiを止めたいときは、上限を0にして環境変数だけを書き換える。イメージは作り直さないので、すぐに反映される。ただし`deploy.sh api`は上限を毎回上書きするので、止めている間にmainへマージすると、CDのデプロイで既定の10回・50回・10回・10回に戻る。止めている間はマージしない。
 
 ```bash
 gcloud run services update paper-summarizer-api --region asia-northeast1 --project <プロジェクト ID> \
-  --update-env-vars MAX_ANALYSES_PER_DAY=0,MAX_ASKS_PER_DAY=0,MAX_QUIZZES_PER_DAY=0
+  --update-env-vars MAX_ANALYSES_PER_DAY=0,MAX_ASKS_PER_DAY=0,MAX_QUIZZES_PER_DAY=0,MAX_CHECKS_PER_DAY=0
 ```
 
 ログインが無いので、誰かが上限を使い切ると、その日はほかの人（審査員を含む）も使えなくなる。審査の直前に使い切られていたら、記録を消すか上限を上げて戻す。記録の読み書きに失敗したときも、費用が出ないよう、その依頼を断る。

@@ -234,6 +234,38 @@ class QuizAnswerRequest(BaseModel):
     picks: list[QuizPick] = Field(max_length=20)
 
 
+# ---------- 確認モード（前提知識の仕分け） ----------
+
+
+class CheckQuestion(BaseModel):
+    concept_id: str = Field(description="渡された概念の id（そのまま返す）")
+    question: str = Field(description="その概念の意味や使いどころを問う問題文")
+    choices: list[str] = Field(description="ちょうど3つの選択肢。正しいものは1つだけで、互いに別の内容にする。「分からない」は入れない")
+    correct_index: int = Field(description="choices の中の正しい選択肢の番号（0始まり）")
+    explanation: str = Field(description="なぜその選択肢が正しいかの解説（2〜3文）")
+    evidence: list[Evidence] = Field(
+        description="論文に出てくる概念（origin=paper）では、解説の根拠になる論文の原文を1箇所。一字一句そのまま抜き出す。論文に出てこない概念は空配列"
+    )
+
+
+class CheckQuestions(BaseModel):
+    questions: list[CheckQuestion]
+
+
+class CheckCreateRequest(BaseModel):
+    concept_ids: list[str] = Field(min_length=1, max_length=6)
+    force: bool = False  # True なら、問題があっても新しく作る（上限に数える）
+
+
+class CheckAnswer(BaseModel):
+    id: str = Field(min_length=1, max_length=20)
+    choice: int = Field(ge=0, le=3)  # 選択肢の番号。3 は「分からない」
+
+
+class CheckAnswerRequest(BaseModel):
+    answers: list[CheckAnswer] = Field(max_length=6)
+
+
 # ---------- 保存する論文の記録 ----------
 
 

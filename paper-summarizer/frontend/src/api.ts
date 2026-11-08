@@ -106,6 +106,22 @@ export type QuizResult = { found: number; false_alarms: number; missed: number; 
 export type Quiz = { id: string; created_at: string; submitted: boolean; items: QuizItem[]; result: QuizResult | null }
 export type QuizPick = { id: string; page: number }
 
+/** 確認モードの問題。回答前は問題文と選択肢だけで、正解はサーバーが返さない。最後の選択肢は必ず「分からない」 */
+export type CheckItem = { id: string; concept_id: string; question: string; options: string[]; general_knowledge: boolean }
+export type CheckResultItem = CheckItem & {
+  chosen: number
+  correct_index: number
+  is_correct: boolean
+  dont_know: boolean
+  explanation: string
+  /** 論文に出てくる概念だけ。一般知識による問題は null */
+  evidence: Evidence | null
+}
+export type Verdict = 'known' | 'unknown'
+export type CheckResult = { correct: number; verdicts: Record<string, Verdict>; items: CheckResultItem[] }
+export type Check = { id: string; created_at: string; submitted: boolean; items: CheckItem[]; result: CheckResult | null }
+export type CheckAnswer = { id: string; choice: number }
+
 export type Lang = NonNullable<Paper['lang']>
 /** 一覧の1件 */
 export type PaperSummary = { id: string; filename: string; title: string | null; status: Status; created_at: string }
@@ -191,5 +207,22 @@ export const api = {
       body: JSON.stringify({ picks }),
       signal,
     }).then((r) => json<{ quiz: Quiz }>(r)),
+  getCheck: (id: string, signal?: AbortSignal) =>
+    fetch(`/api/papers/${id}/check`, { signal }).then((r) => json<{ check: Check | null }>(r)),
+  /** force なしなら、問題があればそれを返す（Gemini を呼ばない）。force は新しい概念の組で作り直すときで、上限に数えられる */
+  createCheck: (id: string, conceptIds: string[], force = false, signal?: AbortSignal) =>
+    fetch(`/api/papers/${id}/check`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ concept_ids: conceptIds, force }),
+      signal,
+    }).then((r) => json<{ check: Check }>(r)),
+  answerCheck: (id: string, checkId: string, answers: CheckAnswer[], signal?: AbortSignal) =>
+    fetch(`/api/papers/${id}/check/${checkId}/answer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ answers }),
+      signal,
+    }).then((r) => json<{ check: Check }>(r)),
   pdfUrl: (id: string) => `/api/papers/${id}/pdf`,
 }
