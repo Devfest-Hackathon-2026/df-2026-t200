@@ -17,6 +17,7 @@ from . import config
 from .concepts import clean_concepts, clean_equation_concepts, repair_equation_concepts, repair_step1
 from .errors import EmptyResponseError
 from .flow import clean_flow
+from .foundations import clean_foundations, repair_foundations
 from .schemas import Answer, CheckQuestions, QuizRewrites, Step1, Step2, Step3
 
 log = logging.getLogger("paper")
@@ -100,10 +101,12 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
     except ValidationError:
         if schema is Step1:
             # 前提知識の重要度・出どころ・根拠は付加情報。使えない項目だけ外して（既定値になる）検証し直す
+            # 先に読むとよい論文（foundations）も付加情報。壊れた要素だけ外す
             repaired = repair_step1(json.loads(resp.text))
+            repaired = repair_foundations(repaired) if repaired is not None else None
             if repaired is None:
                 raise
-            log.warning("repairing invalid concept fields in %s response", schema.__name__)
+            log.warning("repairing invalid concept / foundations fields in %s response", schema.__name__)
             return schema.model_validate(repaired).model_dump(mode="json", by_alias=True)
         # 図解は付け足しなので、flow の中身が不正でも Step 2 の解説は捨てない。flow を外して検証し直す
         # 式の concepts も付加情報なので、不正ならそこだけ直してから検証し直す
@@ -132,8 +135,13 @@ def step1(pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client |
 - 論文に出てこない前提（ai_inference）は、論文に出てくる概念から数えて2段までに限る（その前提の前提まで。それより遡らない）。
 - first_page は論文内で最初に登場するページ。ai_inference の概念は null にする。
 - sections は論文の節構成とページ範囲。
-- reading_order は初めて読む学生が効率よく理解できる読む順番。"""
-    return clean_concepts(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step1, level, cli, lang))
+- reading_order は初めて読む学生が効率よく理解できる読む順番。
+- foundations は、この論文を読む前に（または並行して）読むとよい論文を 0〜5 本。手法のもとになっている論文を選び、order に読む順番（基礎的なものが先）を付ける。
+  論文の参考文献（References）に載っている論文だけから選ぶ。載っていない論文を作らない。該当がなければ空配列にする。
+  title・authors・year は参考文献に書かれているとおりに書く（年が分からなければ null）。doi と arxiv_id は、参考文献にその記載があるときだけ書き、無ければ null にする。推測で補わない。
+  reason は、対象の論文での使われ方に基づいて1〜2文で書く（一般的な評判や被引用数を理由にしない）。
+  evidence には、対象の論文の本文でその論文を引用している箇所を、page と quote（一字一句そのまま）で1〜2箇所付ける。参考文献の一覧そのものではなく、本文中の引用箇所を選ぶ。"""
+    return clean_foundations(clean_concepts(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step1, level, cli, lang)))
 
 
 def step2(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:

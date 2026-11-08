@@ -131,6 +131,26 @@ def step1(pages: list[str], filename: str) -> dict[str, Any]:
             {"section": "2. Method", "page": min(3, n), "reason": "【デモ】前提知識マップを見ながら手法を追う。"},
             {"section": "3. Experiments", "page": min(6, n), "reason": "【デモ】主張が実験でどう支えられているかを確かめる。"},
         ],
+        "foundations": [
+            {
+                "title": f"【デモ】基礎論文の例 {name}",
+                "authors": "Author A, Author B",
+                "year": year,
+                "reason": f"【デモ】{why}",
+                "order": i,
+                "doi": None,
+                "arxiv_id": None,
+                "evidence": _ev(s, i - 1),
+            }
+            for i, (name, year, why) in enumerate(
+                [
+                    ("A", 2014, "手法の土台になっている考え方を先に押さえる。"),
+                    ("B", 2016, "本論文が改良した元の手法を知る。"),
+                    ("C", 2017, "実験で比べている手法の背景を知る。"),
+                ],
+                start=1,
+            )
+        ],
     }
 
 

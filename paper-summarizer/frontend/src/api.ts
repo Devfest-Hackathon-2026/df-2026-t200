@@ -16,6 +16,17 @@ export type Concept = {
   origin?: Origin
   evidence?: Evidence[]
 }
+/** 先に読むとよい論文。古い保存済みの結果には無い。doi / arxiv_id はサーバーで形を確かめたもの。リンクはフロントが固定のホストで作る */
+export type Foundation = {
+  title: string
+  authors?: string
+  year?: number | null
+  reason: string
+  order: number
+  doi?: string | null
+  arxiv_id?: string | null
+  evidence?: Evidence[]
+}
 export type Step1 = {
   title: string
   summary: string[]
@@ -23,6 +34,7 @@ export type Step1 = {
   concepts: Concept[]
   sections: { title: string; page_start: number; page_end: number }[]
   reading_order: { section: string; page: number; reason: string }[]
+  foundations?: Foundation[]
 }
 
 export type Equation = {
