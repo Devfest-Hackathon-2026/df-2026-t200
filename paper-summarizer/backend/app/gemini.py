@@ -41,7 +41,7 @@ LEVELS = {
 LANGS = {
     "ja": (
         "日本語。専門用語は、日本の教科書や論文で定着した訳語を使う"
-        "（例: unsupervised → 教師なし、unlabeled → ラベルなし、autoregressive → 自己回帰、architecture → アーキテクチャ）。"
+        "（例: unsupervised → 教師なし、unlabeled → ラベルなし、autoregressive → 自己回帰、architecture → アーキテクチャ、masked language model → マスク言語モデル）。"
         "定着した訳語が無い用語は、直訳の造語を作らず、カタカナか英語のまま書く"
     ),
     "en": "英語（English）。見出し・説明・回答はすべて英語で書く",
