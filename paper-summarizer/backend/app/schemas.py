@@ -70,6 +70,19 @@ class ReadingItem(BaseModel):
     reason: str = Field(description="この順番で読む理由（1文）")
 
 
+class Foundation(BaseModel):
+    title: str = Field(description="先に読むとよい論文のタイトル。対象の論文の参考文献に載っているものだけ")
+    authors: str = Field(default="", description="著者（参考文献に書かれているとおり。分からなければ空文字）")
+    year: int | None = Field(default=None, description="発行年。分からなければ null")
+    reason: str = Field(description="なぜ先に読むとよいか（1〜2文）。対象の論文での使われ方に基づく")
+    order: int = Field(description="読む順番（1から。基礎的なものが先）")
+    doi: str | None = Field(default=None, description="参考文献に DOI が書かれていればそのまま（10. で始まる形）。無ければ null")
+    arxiv_id: str | None = Field(default=None, description="参考文献に arXiv ID が書かれていればそのまま（例: 1706.03762）。無ければ null")
+    evidence: list[Evidence] = Field(
+        default_factory=list, description="対象の論文の本文でこの論文を引用している箇所（page と quote）。一字一句そのまま"
+    )
+
+
 class Step1(BaseModel):
     title: str = Field(description="論文タイトル（原文のまま）")
     summary: list[str] = Field(description="ちょうど3項目: [何の問題か, どう解いたか, 何が分かったか]")
@@ -77,6 +90,8 @@ class Step1(BaseModel):
     concepts: list[Concept] = Field(description="前提知識 6〜10 個。基礎的なものから順に")
     sections: list[SectionInfo]
     reading_order: list[ReadingItem] = Field(description="初めて読む学生に勧める読む順番 4〜6 項目")
+    # 後から足した項目。出力が外れても Step 1 全体を落とさないよう既定値を持たせる
+    foundations: list[Foundation] = Field(default_factory=list, description="先に読むとよい論文 0〜5 本。参考文献に載っているものだけ")
 
 
 # ---------- Step 2: コアロジック＆図表連動ウォークスルー ----------

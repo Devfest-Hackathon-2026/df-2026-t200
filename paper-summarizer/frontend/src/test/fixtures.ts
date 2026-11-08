@@ -1,4 +1,4 @@
-import type { Message, Paper, Quiz, Step1, Step2, Step3 } from '../api'
+import type { Foundation, Message, Paper, Quiz, Step1, Step2, Step3 } from '../api'
 
 export const quiz: Quiz = {
   id: 'quiz1',
@@ -46,6 +46,29 @@ export const quizResult: Quiz = {
     ],
   },
 }
+
+export const foundations: Foundation[] = [
+  {
+    title: 'Base Paper One',
+    authors: 'A. Author, B. Author',
+    year: 2015,
+    reason: '手法の土台になっている。',
+    order: 1,
+    doi: '10.1000/abc',
+    arxiv_id: null,
+    evidence: [{ page: 2, quote: 'we build on Base Paper One', verified: true }],
+  },
+  {
+    title: 'Second Base',
+    authors: 'C. Author',
+    year: null,
+    reason: '比較対象の背景を知る。',
+    order: 2,
+    doi: null,
+    arxiv_id: '1706.03762',
+    evidence: [{ page: 5, quote: 'following Second Base', verified: false }],
+  },
+]
 
 export const step1: Step1 = {
   title: 'Sample Paper',
@@ -103,6 +126,7 @@ export const step1: Step1 = {
   ],
   sections: [{ title: 'Introduction', page_start: 1, page_end: 2 }],
   reading_order: [{ section: 'Introduction', page: 1, reason: '全体像をつかむ' }],
+  foundations,
 }
 
 /** importance などを持たない、古い保存済みの結果 */

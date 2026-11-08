@@ -16,6 +16,7 @@ import {
 } from './conceptLayout'
 import { ConceptCheck } from './ConceptCheck'
 import { pickCheckTargets } from './conceptCheck'
+import { FoundationPapers } from './FoundationPapers'
 import { equationsUsing } from './equationLinks'
 import { forget, isMemory, KNOWN_CONCEPTS_KEY, rememberedIds, rememberKnown, type NameRecord } from './knownConcepts'
 import { learningPath } from './learningPath'
@@ -343,6 +344,8 @@ export function Step1Map({ data, paperId, step2, onOpenEquation, focus }: Step1M
           </div>
         )}
       </section>
+
+      <FoundationPapers items={data.foundations} />
 
       <section className="block">
         <h2>読む順番</h2>

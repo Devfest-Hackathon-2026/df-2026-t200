@@ -1129,6 +1129,33 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   font-weight: 700;
   flex: none;
 }
+.foundations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.foundation {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.foundation-title {
+  overflow-wrap: anywhere;
+}
+.foundation .order-body {
+  gap: 4px;
+  flex: 1;
+}
+.foundation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
 .order-body {
   display: flex;
   flex-direction: column;
