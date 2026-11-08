@@ -231,12 +231,17 @@ class PaperService:
         """論文の記録を作る。同じ PDF が解析済みなら解析結果（results）だけを写し、再解析しない。
 
         記録はアップロードごとに新しく作り、ほかの人の論文IDや会話履歴は返さない。
-        新しく解析する場合だけ、解析の1日の上限を使う。上限に達していれば何も保存せず QuotaExceeded。
+        新しく解析する場合だけ、解析の1日の上限を使う。上限に達していれば、古い版の結果があればそれを写し、無ければ何も保存せず QuotaExceeded。
         """
         existing_id = store.find_by_hash(sha256, level, lang) if sha256 else None
         source = store.load(existing_id) if existing_id else None
         if source is None and not self.analysis_quota.take():
-            raise QuotaExceeded
+            # 上限に達していても、同じ PDF の古い版の結果があればそれを出す。版を上げた直後に
+            # デモ用の論文が上限のエラーになるのを避けるため（新しい項目は出ないが、読める状態を保つ）
+            older_id = store.find_by_hash(sha256, level, lang, any_version=True) if sha256 else None
+            source = store.load(older_id) if older_id else None
+            if source is None:
+                raise QuotaExceeded
         paper_id = store.new_id()
         store.save_pdf(paper_id, data)
         store.save_pages(paper_id, pages, [normalize(p) for p in pages])
