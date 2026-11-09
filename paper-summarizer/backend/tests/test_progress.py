@@ -246,8 +246,23 @@ def test_demo_analyzer_advances_progress_in_steps(monkeypatch):
     src = PaperSource(**{**_demo_src().__dict__, "on_progress": seen.append})
     DemoAnalyzer().step1(src)
     assert len(seen) >= 4 and seen == sorted(seen) and seen[-1] > seen[0] > 0
-    assert 1.5 <= sum(slept) <= 4.0  # 数秒かけて進む（e2e が遅くなりすぎない範囲）
+    assert 3.0 <= sum(slept) <= 6.0  # 1.5秒ごとの問い合わせで拾える長さで、e2e が遅くなりすぎない範囲
 
 
 def test_demo_analyzer_works_without_a_callback():
     DemoAnalyzer().step3(_demo_src(), {})
+
+
+def test_demo_writing_lasts_long_enough_for_1_5s_polling(monkeypatch):
+    # 本番の画面は1.5秒ごとの問い合わせで進捗を取る。デモ（e2e）で「書いている」状態を取りこぼさないよう、2回分以上続ける
+    from types import SimpleNamespace
+
+    from app import mock
+
+    slept: list[float] = []
+    monkeypatch.setattr(mock, "time", SimpleNamespace(sleep=slept.append))
+    seen: list[int] = []
+    mock.simulate_writing(seen.append, 2400)
+    assert sum(slept) >= 3.0
+    assert max(slept) <= 0.5  # 文字数は細かく増える
+    assert seen[-1] == 2400 and seen == sorted(seen)
