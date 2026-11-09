@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, type Paper, type Progress, type ProgressEvent } from '../api'
 
+// Firebase Hosting の rewrite は SSE を途中で流さず、接続が閉じるまでためる（2026-11-09 に本番で確認。Issue #103）。
+// そのため本番は最初から問い合わせで進捗を取る。Cloud Run に直接つなぐ構成などで SSE を使うときは VITE_USE_SSE=1 でビルドする
+export const sseEnabled = (): boolean => import.meta.env.VITE_USE_SSE === '1'
+
 export const POLL_MS = 1500
 export const MAX_BACKOFF_MS = 30_000
 /** 接続してから最初の知らせがこの時間内に届かなければ、問い合わせに切り替える（Hosting が応答をためる場合など） */
@@ -146,7 +150,7 @@ export function usePaper(id: string): PaperState {
         loop.timer = window.setTimeout(tick, Math.min(POLL_MS * 2 ** loop.failures, MAX_BACKOFF_MS))
       }
     }
-    if (typeof EventSource === 'undefined') loop.sse = 'off'
+    if (!sseEnabled() || typeof EventSource === 'undefined') loop.sse = 'off'
     tick()
     return () => {
       loop.alive = false
