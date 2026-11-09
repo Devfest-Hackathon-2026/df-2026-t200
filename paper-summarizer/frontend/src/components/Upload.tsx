@@ -18,13 +18,15 @@ const MORE_BUTTON_SPACE = 56
 
 /** 画面の幅が狭いか。画面の大きさが変わったら更新する */
 function useNarrow(): boolean {
-  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches)
+  // matchMedia が無い環境でも落とさない（広い画面として扱う）
+  const [narrow, setNarrow] = useState(() => window.matchMedia?.(NARROW_QUERY)?.matches ?? false)
   useEffect(() => {
-    const mq = window.matchMedia(NARROW_QUERY)
+    const mq = window.matchMedia?.(NARROW_QUERY)
+    if (!mq) return
     const onChange = () => setNarrow(mq.matches)
     onChange()
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
+    mq.addEventListener?.('change', onChange)
+    return () => mq.removeEventListener?.('change', onChange)
   }, [])
   return narrow
 }
@@ -102,6 +104,11 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
   const [showAll, setShowAll] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  // 削除の読み上げと、削除のあとにフォーカスを移す先（論文 id。null は見出し／一覧が空なら PDF を選ぶボタン）
+  const [notice, setNotice] = useState('')
+  const focusAfter = useRef<{ id: string | null } | null>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
   const narrow = useNarrow()
   const [fit, setFit] = useState<number | null>(null)
   const historyRef = useRef<HTMLElement>(null)
@@ -147,6 +154,19 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
     }
   }
 
+  // 削除で押したボタンが消えるので、フォーカスが body に落ちないよう次の操作先へ移す
+  useEffect(() => {
+    const request = focusAfter.current
+    if (!request) return
+    focusAfter.current = null
+    const next = request.id
+      ? Array.from(pageRef.current?.querySelectorAll<HTMLElement>('.paper-item') ?? []).find((li) => li.dataset.paperId === request.id)
+      : null
+    const target =
+      next?.querySelector<HTMLElement>('.paper-delete') ?? headingRef.current ?? pageRef.current?.querySelector<HTMLElement>('.drop-cta')
+    target?.focus()
+  }, [papers])
+
   async function remove(paper: PaperSummary) {
     const name = paper.title || paper.filename
     if (deleting || !window.confirm(`「${name}」を削除しますか。解析結果と質問の記録も消え、元に戻せません`)) return
@@ -155,7 +175,11 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
     try {
       await api.delete(paper.id)
       forgetPaperStorage(paper.id)
+      const shown = showAll ? papers : papers.slice(0, limit)
+      const next = shown[shown.findIndex((p) => p.id === paper.id) + 1]
+      focusAfter.current = { id: next?.id ?? null }
       setPapers((prev) => prev.filter((p) => p.id !== paper.id))
+      setNotice(`「${name}」を削除しました`)
     } catch (e) {
       setListError(`削除できませんでした。${(e as Error).message}`)
     } finally {
@@ -168,7 +192,7 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
   }
 
   return (
-    <div className="upload-page">
+    <div className="upload-page" ref={pageRef}>
       <div className="upload-main">
         <div className="hero">
           {/* 折り返すときは「、」の後で改行する */}
@@ -250,12 +274,19 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
         )}
       </div>
 
+      {/* 削除の結果を読み上げる（一覧が空になっても残るよう、一覧の外に置く） */}
+      <div className="sr-only" role="status">
+        {notice}
+      </div>
+
       {papers.length > 0 && (
         <section className="history" ref={historyRef} aria-labelledby="history-title">
-          <h2 id="history-title">これまでの論文</h2>
+          <h2 id="history-title" ref={headingRef} tabIndex={-1}>
+            これまでの論文
+          </h2>
           <ul>
             {(showAll ? papers : papers.slice(0, limit)).map((p) => (
-              <li key={p.id} className="paper-item">
+              <li key={p.id} className="paper-item" data-paper-id={p.id}>
                 <PaperCard paper={p} onOpen={onOpen} />
                 <button
                   type="button"
@@ -264,13 +295,13 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
                   disabled={deleting === p.id}
                   onClick={() => remove(p)}
                 >
-                  削除
+                  {deleting === p.id ? '削除中…' : '削除'}
                 </button>
               </li>
             ))}
           </ul>
           {papers.length > limit && (
-            <button type="button" className="btn history-more" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+            <button type="button" className="btn history-more" onClick={() => setShowAll((v) => !v)}>
               {showAll ? '閉じる' : `すべて表示（${papers.length}件）`}
             </button>
           )}

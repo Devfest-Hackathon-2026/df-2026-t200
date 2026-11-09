@@ -147,7 +147,7 @@ def delete_paper(paper_id: str, owner: str | None) -> bool:
     """持ち主が一致する論文の記録・PDF・ページのキャッシュを消す。消したら True。
 
     id の形が不正・記録が無い・持ち主が違う・記録に持ち主が無いときは何も消さず False（存在を区別させない）。
-    記録を先に消すので、以降の mutate / transition は KeyError になり、解析のスレッドが記録を作り直すことはない。
+    最後に記録を消すと、以降の mutate / transition は KeyError になり、解析のスレッドが記録を作り直すことはない。
     uploads や quota の記録は消さない。パスは valid_id を通った id からだけ作る。
     """
     if owner is None or not valid_id(paper_id):
@@ -156,7 +156,8 @@ def delete_paper(paper_id: str, owner: str | None) -> bool:
         paper = _read(paper_id)
         if paper is None or paper.get("owner") != owner:
             return False
-        for path in (_json_path(paper_id), _json_path(paper_id).with_suffix(".tmp"), pdf_path(paper_id), pages_path(paper_id)):
+        # 記録の JSON を最後に消す。途中で失敗しても記録が残るので、一覧に出たまま再試行できる（記録だけ先に消えるとファイルが孤児になる）
+        for path in (pdf_path(paper_id), pages_path(paper_id), _json_path(paper_id).with_suffix(".tmp"), _json_path(paper_id)):
             path.unlink(missing_ok=True)
     return True
 

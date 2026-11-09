@@ -144,6 +144,63 @@ describe('Upload history: delete', () => {
     expect(onOpen).not.toHaveBeenCalled()
   })
 
+  it("moves focus to the next card's delete button and announces the deletion", async () => {
+    vi.spyOn(api, 'list').mockResolvedValue(papers(3))
+    vi.spyOn(api, 'delete').mockResolvedValue(undefined)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    await userEvent.click(await screen.findByRole('button', { name: '論文1を削除' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '論文2を削除' })).toHaveFocus())
+    expect(screen.getByRole('status')).toHaveTextContent('「論文1」を削除しました')
+  })
+
+  it('moves focus to the heading when the last card was deleted', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue(papers(2))
+    vi.spyOn(api, 'delete').mockResolvedValue(undefined)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    await userEvent.click(await screen.findByRole('button', { name: '論文2を削除' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'これまでの論文' })).toHaveFocus())
+  })
+
+  it('moves focus to the upload button when no paper is left', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue(papers(1))
+    vi.spyOn(api, 'delete').mockResolvedValue(undefined)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    await userEvent.click(await screen.findByRole('button', { name: '論文1を削除' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'PDFを選択' })).toHaveFocus())
+    expect(screen.getByRole('status')).toHaveTextContent('「論文1」を削除しました')
+  })
+
+  it('shows 削除中… on the button while deleting', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue(papers(2))
+    let finish: () => void = () => {}
+    vi.spyOn(api, 'delete').mockReturnValue(new Promise<void>((r) => (finish = r)))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    await userEvent.click(await screen.findByRole('button', { name: '論文1を削除' }))
+    expect(screen.getByRole('button', { name: '論文1を削除' })).toHaveTextContent('削除中…')
+    expect(screen.getByRole('button', { name: '論文1を削除' })).toBeDisabled()
+    finish()
+    await waitFor(() => expect(screen.queryByText('論文1')).toBeNull())
+  })
+
+  it('works when matchMedia is unavailable', async () => {
+    // @ts-expect-error 古い環境を想定して取り除く
+    window.matchMedia = undefined
+    vi.spyOn(api, 'list').mockResolvedValue(papers(8))
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    expect(within(await screen.findByRole('list')).getAllByRole('listitem')).toHaveLength(6)
+  })
+
+  it('keeps a fixed label on the show-all button without aria-expanded', async () => {
+    vi.spyOn(api, 'list').mockResolvedValue(papers(8))
+    render(<Upload health={health} onOpen={vi.fn()} />)
+    const more = await screen.findByRole('button', { name: 'すべて表示（8件）' })
+    expect(more).not.toHaveAttribute('aria-expanded')
+  })
+
   it('fills the list from the rest after a delete while collapsed', async () => {
     vi.spyOn(api, 'list').mockResolvedValue(papers(7))
     vi.spyOn(api, 'delete').mockResolvedValue(undefined)

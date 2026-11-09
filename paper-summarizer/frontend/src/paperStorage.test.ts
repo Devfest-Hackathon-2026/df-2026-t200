@@ -7,7 +7,7 @@ const OTHER = 'fedcba9876543210'
 
 describe('forgetPaperStorage', () => {
   it('removes every key of that paper and keeps the rest', () => {
-    for (const k of ['knowledge', 'conceptLevel', 'checkDraft', 'thoughts']) {
+    for (const k of ['knowledge', 'conceptLevel', 'checkDraft', 'checkOpen', 'thoughts']) {
       localStorage.setItem(`${k}:${ID}`, '1')
       localStorage.setItem(`${k}:${OTHER}`, '1')
     }
@@ -20,6 +20,7 @@ describe('forgetPaperStorage', () => {
         'client-id',
         'conceptLevel:' + OTHER,
         'checkDraft:' + OTHER,
+        'checkOpen:' + OTHER,
         'knowledge:' + OTHER,
         'knownConcepts',
         'pane-split',

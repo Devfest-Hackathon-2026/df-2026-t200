@@ -69,6 +69,25 @@ def test_delete_paper_keeps_other_papers_with_the_same_pdf():
     assert all(p.exists() for p in _files("b" * 16))
 
 
+def test_delete_paper_removes_the_record_last_so_a_failure_can_be_retried(monkeypatch):
+    pid = "f" * 16
+    _seed(pid)
+    real = type(store.pages_path(pid)).unlink
+
+    def flaky(self, *a, **k):
+        if self.name.endswith(".pages.json"):
+            raise OSError("disk error")  # PDF は消えたあと、ページのキャッシュで失敗
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(type(store.pages_path(pid)), "unlink", flaky)
+    with pytest.raises(OSError):
+        store.delete_paper(pid, OWNER)
+    assert store._json_path(pid).exists()  # 記録が残るので、画面の一覧にも出て再試行できる
+    monkeypatch.undo()
+    assert store.delete_paper(pid, OWNER) is True
+    assert not any(p.exists() for p in _files(pid))
+
+
 def test_deleted_record_is_not_recreated_by_late_writes():
     pid = "e" * 16
     _seed(pid)
