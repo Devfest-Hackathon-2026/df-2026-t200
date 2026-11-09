@@ -369,3 +369,63 @@ describe('App', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/'))
   })
 })
+
+describe('解析の中止', () => {
+  afterEach(() => {
+    window.location.hash = ''
+  })
+
+  const running = { ...paper, status: 'processing_step2' as const, results: { step1: paper.results.step1 } }
+  const cancelled = { ...running, status: 'cancelled' as const }
+
+  it('asks for confirmation, cancels the running analysis and shows how to resume', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    const get = vi.spyOn(api, 'get').mockResolvedValueOnce(running).mockResolvedValue(cancelled)
+    const cancel = vi.spyOn(api, 'cancel').mockResolvedValue({ ok: true })
+    render(<App />)
+    expect(await screen.findByText(/Step 2 を作成中・2\/3/)).toBeInTheDocument()
+
+    // 誤って押しても、確認で「続ける」を選べば何もしない
+    await userEvent.click(screen.getByRole('button', { name: '解析を中止' }))
+    expect(screen.getByText(/作成中のStepは破棄されます/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '続ける' }))
+    expect(cancel).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: '解析を中止' }))
+    await userEvent.click(screen.getByRole('button', { name: '中止する' }))
+    expect(cancel).toHaveBeenCalledWith(paper.id)
+    expect(await screen.findByText(/解析を中止しました/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '続きから再開' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '解析を中止' })).not.toBeInTheDocument()
+    expect(get).toHaveBeenCalledTimes(2) // 中止のあとに取り直す
+
+    // 終わった Step 1 は読める。まだ無い Step は中止したことを伝える
+    expect(screen.getByText('問題A')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /手法の流れ/ }))
+    expect(screen.getByText('解析を中止したため、手法の流れの解説はまだありません。')).toBeInTheDocument()
+  })
+
+  it('resumes a cancelled analysis', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValueOnce(cancelled).mockResolvedValue(paper)
+    const retry = vi.spyOn(api, 'retry').mockResolvedValue({ ok: true })
+    render(<App />)
+    await userEvent.click(await screen.findByRole('button', { name: '続きから再開' }))
+    expect(retry).toHaveBeenCalledWith(paper.id)
+    await waitFor(() => expect(screen.queryByText(/解析を中止しました/)).not.toBeInTheDocument())
+  })
+
+  it('shows why the cancel failed and keeps the running state', async () => {
+    window.location.hash = `#/paper/${paper.id}`
+    vi.spyOn(api, 'health').mockResolvedValue(health)
+    vi.spyOn(api, 'get').mockResolvedValue(running)
+    vi.spyOn(api, 'cancel').mockRejectedValue(new ApiError('解析中の論文だけを中止できます', 409))
+    render(<App />)
+    await userEvent.click(await screen.findByRole('button', { name: '解析を中止' }))
+    await userEvent.click(screen.getByRole('button', { name: '中止する' }))
+    expect(await screen.findByText(/中止できませんでした（解析中の論文だけを中止できます）/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '解析を中止' })).toBeInTheDocument()
+  })
+})

@@ -8,6 +8,7 @@ const STATUS_LABEL: Record<string, string> = {
   processing_step3: '解析中（3/3）',
   done: '完了',
   failed: '解析に失敗',
+  cancelled: '解析を中止',
 }
 
 /** 一覧に出す日付と時刻（ブラウザの時刻で「11月5日 18:30」、今年でなければ年も付ける）。同じ日に何度も開いても見分けられるよう時刻も出す。読めない値は出さない */

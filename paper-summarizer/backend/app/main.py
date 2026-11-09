@@ -170,7 +170,7 @@ def get_pdf(paper_id: str) -> FileResponse | RedirectResponse:
 def retry(paper_id: str, service: Service) -> dict[str, Any]:
     # 再実行できない状態で断る分（409）は、1分あたりの回数に数えない
     if not retryable(_load_or_404(paper_id)):
-        raise HTTPException(409, "失敗した解析、または止まったままの解析のみ再実行できます")
+        raise HTTPException(409, "失敗した解析・中止した解析、または止まったままの解析のみ再実行できます")
     if not service.retry_limiter.allow(paper_id):
         raise HTTPException(429, "再実行の回数が多すぎます。1分ほど待ってからもう一度お試しください。")
     try:
@@ -178,7 +178,20 @@ def retry(paper_id: str, service: Service) -> dict[str, Any]:
     except QuotaExceeded as e:
         raise HTTPException(429, QUOTA_MESSAGE) from e
     if not retried:
-        raise HTTPException(409, "失敗した解析、または止まったままの解析のみ再実行できます")
+        raise HTTPException(409, "失敗した解析・中止した解析、または止まったままの解析のみ再実行できます")
+    return {"ok": True}
+
+
+@app.post("/api/papers/{paper_id}/cancel")
+def cancel(paper_id: str, service: Service) -> dict[str, Any]:
+    """実行中の解析を中止する。終わった Step の結果は残り、「解析をやり直す」で続きから再開できる。"""
+    _load_or_404(paper_id)
+    try:
+        cancelled = service.cancel(paper_id)
+    except KeyError as e:
+        raise HTTPException(404, "論文が見つかりません") from e
+    if not cancelled:
+        raise HTTPException(409, "解析中の論文だけを中止できます")
     return {"ok": True}
 
 

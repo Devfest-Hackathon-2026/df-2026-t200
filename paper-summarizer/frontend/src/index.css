@@ -177,6 +177,34 @@ h3 {
 .error.banner .btn {
   flex: none;
 }
+/* 解析中・中止したときの帯（エラーではないので赤くしない） */
+.banner.analysis-running,
+.banner.analysis-cancelled {
+  margin: 8px 16px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1.5px solid var(--line);
+  background: var(--blue-soft);
+}
+.banner.analysis-cancelled {
+  background: var(--sticky);
+}
+.banner .btn,
+.banner-actions {
+  flex: none;
+}
+.banner-actions {
+  display: flex;
+  gap: 8px;
+}
+.banner .spinner {
+  vertical-align: -1px;
+}
 
 /* ---------- 板面（画面いっぱい） ---------- */
 .app {
@@ -383,6 +411,15 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 }
 .btn.primary:hover:not(:disabled) {
   background: var(--blue-dark);
+  color: #fff;
+}
+.btn.danger {
+  border-color: var(--red);
+  color: var(--red);
+  font-weight: 700;
+}
+.btn.danger:hover:not(:disabled) {
+  background: var(--red);
   color: #fff;
 }
 .btn.link {

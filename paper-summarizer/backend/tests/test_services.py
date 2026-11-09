@@ -317,3 +317,96 @@ def test_daily_limit_still_applies_when_there_is_no_older_result():
     data = make_pdf(3)
     with pytest.raises(services.QuotaExceeded):
         svc.create(data=data, pages=pdf_utils.extract_pages(data), filename="x.pdf", level="undergrad", sha256="nothing")
+
+
+# ---------- 解析の中止 ----------
+
+
+class GatedAnalyzer(FakeAnalyzer):
+    """指定した Step の呼び出しの途中で止まり、gate が開くまで返らない（Gemini の呼び出し中を再現する）。"""
+
+    def __init__(self, hold: str):
+        super().__init__()
+        self.hold = hold
+        self.entered = threading.Event()
+        self.gate = threading.Event()
+
+    def _maybe_hold(self, step):
+        if step == self.hold:
+            self.entered.set()
+            assert self.gate.wait(5)
+
+    def step1(self, src):
+        self._maybe_hold("step1")
+        return super().step1(src)
+
+    def step2(self, src, s1):
+        self._maybe_hold("step2")
+        return super().step2(src, s1)
+
+
+def _run_in_thread(svc, pid):
+    t = threading.Thread(target=svc.run_analysis, args=(pid,))
+    t.start()
+    return t
+
+
+def test_cancel_during_gemini_call_discards_that_result_and_stops():
+    fake = GatedAnalyzer(hold="step2")
+    svc = _service(fake)
+    pid = _new_paper(demo=False)
+    t = _run_in_thread(svc, pid)
+    assert fake.entered.wait(5)  # Step 2 の呼び出し中
+    assert svc.cancel(pid) is True
+    assert store.load(pid)["status"] == "cancelled"  # 呼び出しが返る前に、状態はすぐ「中止」になる
+    fake.gate.set()
+    t.join(5)
+    paper = store.load(pid)
+    assert paper["status"] == "cancelled"
+    assert set(paper["results"]) == {"step1"}  # 終わった Step 1 は残し、中止後に返った Step 2 は捨てる
+    assert fake.calls == ["step1", "step2"]  # Step 3 には進まない
+
+
+def test_cancel_only_while_queued_or_processing():
+    svc = _service(FakeAnalyzer())
+    for status in ("done", "failed", "cancelled"):
+        assert svc.cancel(_new_paper(demo=False, status=status)) is False
+    assert svc.cancel(_new_paper(demo=False, status="queued")) is True
+    assert svc.cancel(_new_paper(demo=False, status="processing_step3")) is True
+
+
+def test_cancelled_paper_is_not_started_again_by_a_late_job():
+    fake = FakeAnalyzer()
+    pid = _new_paper(demo=False, status="cancelled")
+    _service(fake).run_analysis(pid)  # 中止前に積まれていたジョブが後から動いても何もしない
+    assert fake.calls == []
+    assert store.load(pid)["status"] == "cancelled"
+
+
+def test_retry_after_cancel_resumes_from_missing_steps():
+    fake = FakeAnalyzer()
+    svc = _service(fake)
+    pid = _new_paper(demo=False, status="cancelled", results={"step1": {"title": "kept"}}, analysis_version=config.ANALYSIS_VERSION)
+    assert svc.retry(pid) is True
+    assert store.load(pid)["status"] == "queued"
+    svc.run_analysis(pid)
+    assert fake.calls == ["step2", "step3"]
+    assert store.load(pid)["status"] == "done"
+
+
+def test_failure_after_cancel_keeps_cancelled():
+    class Failing(GatedAnalyzer):
+        def step1(self, src):
+            self._maybe_hold("step1")
+            raise RuntimeError("boom")
+
+    fake = Failing(hold="step1")
+    svc = _service(fake)
+    pid = _new_paper(demo=False)
+    t = _run_in_thread(svc, pid)
+    assert fake.entered.wait(5)
+    svc.cancel(pid)
+    fake.gate.set()
+    t.join(5)
+    assert store.load(pid)["status"] == "cancelled"
+    assert store.load(pid)["error"] is None
