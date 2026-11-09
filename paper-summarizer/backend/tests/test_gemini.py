@@ -385,3 +385,31 @@ def test_unrelated_errors_stay_generic():
     from app import errors
 
     assert errors.user_message(ValueError("x")) == errors.GENERIC
+
+
+def test_step2_prompt_asks_for_branches_merges_and_groups(fake):
+    models = fake(mock.step2(PAGES))
+    gemini.step2(b"%PDF", "undergrad", mock.step1(PAGES, "a.pdf"))
+    prompt = models.calls[0]["contents"][1]
+    for word in ("group", "分岐", "合流", "並行", "一直線", "残差接続", "事前学習"):
+        assert word in prompt
+    assert "3〜8" in prompt  # ノード数の上限は変えない
+
+
+def test_step2_keeps_flow_when_a_node_group_is_the_wrong_type(fake):
+    s2 = mock.step2(PAGES)
+    s2["flow"]["nodes"][0]["group"] = ["not", "a", "string"]
+    s2["flow"]["nodes"][1]["group"] = 7
+    fake(s2)
+    out = gemini.step2(b"%PDF", "undergrad", mock.step1(PAGES, "a.pdf"))
+    assert out["flow"] is not None
+    assert out["flow"]["nodes"][0]["group"] is None and out["flow"]["nodes"][1]["group"] is None
+    assert out["flow"]["nodes"][2]["group"]  # ほかのノードの group は残る
+
+
+def test_step1_prompt_asks_for_connected_layered_dependencies(fake):
+    models = fake(mock.step1(PAGES, "a.pdf"))
+    gemini.step1(b"%PDF", "undergrad")
+    prompt = models.calls[0]["contents"][1]
+    for word in ("どの概念とも依存でつながらない", "基礎", "論文に固有", "先に知っておくべき"):
+        assert word in prompt

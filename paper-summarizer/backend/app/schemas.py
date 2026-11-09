@@ -142,6 +142,9 @@ class FlowNode(BaseModel):
     kind: FlowKind
     shape: str | None = Field(description="テンソルの形など。論文に書かれているときだけ（根拠を付ける）。なければ null")
     evidence: list[Evidence] = Field(description="このノードの根拠となる本文。shape を書くときは必須")
+    group: str | None = Field(
+        default=None, description="このノードが属する段階の名前（例: 事前学習 / 微調整 / 推論。20字まで、4種類まで）。段階が分かれなければ null"
+    )
 
 
 class FlowEdge(BaseModel):
