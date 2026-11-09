@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type Paper, type Progress } from '../api'
 import { paper } from '../test/fixtures'
-import { FIRST_EVENT_MS, MAX_SHORT_STREAMS, RECONNECT_MS, SHORT_STREAM_MS, usePaper } from './usePaper'
+import { FIRST_EVENT_MS, MAX_SHORT_STREAMS, POLL_MS, RECONNECT_MS, SHORT_STREAM_MS, usePaper } from './usePaper'
 
 class FakeEventSource {
   static instances: FakeEventSource[] = []
@@ -34,10 +34,12 @@ describe('usePaper with server-sent events', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     FakeEventSource.instances = []
     vi.stubGlobal('EventSource', FakeEventSource)
+    vi.stubEnv('VITE_USE_SSE', '1')
   })
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
     vi.restoreAllMocks()
   })
 
@@ -207,5 +209,31 @@ describe('usePaper with server-sent events', () => {
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
     await act(() => vi.advanceTimersByTimeAsync(1600))
     expect(get).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('usePaper without VITE_USE_SSE (production on Firebase Hosting)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    FakeEventSource.instances = []
+    vi.stubGlobal('EventSource', FakeEventSource)
+    vi.stubEnv('VITE_USE_SSE', '')
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+  })
+
+  it('polls from the start and never opens an event stream', async () => {
+    const get = vi.spyOn(api, 'get').mockResolvedValue(running)
+    renderHook(() => usePaper('p1'))
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS * 2 + 10)
+    })
+    expect(FakeEventSource.instances).toHaveLength(0)
+    expect(get.mock.calls.length).toBeGreaterThanOrEqual(3)
   })
 })
