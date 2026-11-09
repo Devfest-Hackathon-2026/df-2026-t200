@@ -165,6 +165,17 @@ def get_paper(paper_id: str, service: Service) -> dict[str, Any]:
     return {**_public(paper), "progress": service.progress_of(paper)}
 
 
+@app.delete("/api/papers/{paper_id}", status_code=204)
+def delete_paper(paper_id: str, service: Service, client_id: ClientId = None) -> Response:
+    """自分でアップロードした論文を消す（記録・PDF・ページのキャッシュ）。持ち主でなければ存在を漏らさず 404。"""
+    owner = store.owner_of(client_id)
+    if not service.delete_limiter.allow(owner or "anonymous"):
+        raise HTTPException(429, "削除の回数が多すぎます。1分ほど待ってからもう一度お試しください。")
+    if not service.delete(paper_id, owner):
+        raise HTTPException(404, "論文が見つかりません")
+    return Response(status_code=204)
+
+
 @app.get("/api/papers/{paper_id}/events")
 def paper_events(paper_id: str, service: Service) -> StreamingResponse:
     """解析の進捗を Server-Sent Events で送る。完了・失敗・中止で最後の1回を送って閉じる。接続の上限を超えたら 429（画面は問い合わせに戻る）。"""

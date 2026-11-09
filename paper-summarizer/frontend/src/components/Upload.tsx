@@ -1,5 +1,46 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, type Health, type Lang, type PaperSummary } from '../api'
+import { forgetPaperStorage } from '../paperStorage'
+
+/**
+ * 一覧に最初から出す件数。
+ * PC 幅: 一覧の枠の高さと、いま出しているカードの高さ（いちばん高いもの）から、スクロールせずに収まる件数を測る
+ * （最低 MIN_VISIBLE 件。画面の大きさが変わったら測り直す）。測れない環境（レイアウトが無いテストなど）では VISIBLE_FALLBACK 件。
+ * スマホ幅: 一覧は縦に積まれてページごとスクロールするので、測らず VISIBLE_NARROW 件の固定にした。
+ * 超えた分は「すべて表示」で出す。
+ */
+const MIN_VISIBLE = 3
+const VISIBLE_FALLBACK = 6
+const VISIBLE_NARROW = 4
+const NARROW_QUERY = '(max-width: 900px)'
+/** 「すべて表示」ボタンと余白が使う高さ（px） */
+const MORE_BUTTON_SPACE = 56
+
+/** 画面の幅が狭いか。画面の大きさが変わったら更新する */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_QUERY)
+    const onChange = () => setNarrow(mq.matches)
+    onChange()
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return narrow
+}
+
+/** 一覧の枠にスクロールなしで収まるカードの件数。測れなければ null */
+function measureFit(section: HTMLElement): number | null {
+  const ul = section.querySelector('ul')
+  const heading = section.querySelector('h2')
+  const heights = Array.from(ul?.querySelectorAll('li') ?? [], (li) => li.offsetHeight)
+  if (!ul || !heading || section.clientHeight === 0 || heights.length === 0 || Math.max(...heights) === 0) return null
+  const style = getComputedStyle(ul)
+  const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0)
+  const gap = parseFloat(style.rowGap) || 0
+  const room = section.clientHeight - heading.offsetHeight - 6 - padding - MORE_BUTTON_SPACE
+  return Math.max(MIN_VISIBLE, Math.floor((room + gap) / (Math.max(...heights) + gap)))
+}
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '解析待ち',
@@ -58,6 +99,25 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
   const [error, setError] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
   const [papers, setPapers] = useState<PaperSummary[]>([])
+  const [showAll, setShowAll] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const narrow = useNarrow()
+  const [fit, setFit] = useState<number | null>(null)
+  const historyRef = useRef<HTMLElement>(null)
+  const limit = narrow ? VISIBLE_NARROW : (fit ?? VISIBLE_FALLBACK)
+
+  // PC 幅では、一覧が空いている高さに収まる件数を測る。枠の大きさが変わったら測り直す
+  useLayoutEffect(() => {
+    const section = historyRef.current
+    if (narrow || showAll || !section) return
+    const update = () => setFit(measureFit(section))
+    update()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(update)
+    observer.observe(section)
+    return () => observer.disconnect()
+  }, [narrow, showAll, papers.length])
   const inputRef = useRef<HTMLInputElement>(null)
   // state の更新を待たずに二重のアップロードを防ぐ
   const busyRef = useRef(false)
@@ -84,6 +144,22 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
     } finally {
       busyRef.current = false
       setBusy(false)
+    }
+  }
+
+  async function remove(paper: PaperSummary) {
+    const name = paper.title || paper.filename
+    if (deleting || !window.confirm(`「${name}」を削除しますか。解析結果と質問の記録も消え、元に戻せません`)) return
+    setListError(null)
+    setDeleting(paper.id)
+    try {
+      await api.delete(paper.id)
+      forgetPaperStorage(paper.id)
+      setPapers((prev) => prev.filter((p) => p.id !== paper.id))
+    } catch (e) {
+      setListError(`削除できませんでした。${(e as Error).message}`)
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -175,15 +251,34 @@ export function Upload({ health, onOpen }: { health: Health | null; onOpen: (id:
       </div>
 
       {papers.length > 0 && (
-        <section className="history" aria-labelledby="history-title">
+        <section className="history" ref={historyRef} aria-labelledby="history-title">
           <h2 id="history-title">これまでの論文</h2>
           <ul>
-            {papers.map((p) => (
-              <li key={p.id}>
+            {(showAll ? papers : papers.slice(0, limit)).map((p) => (
+              <li key={p.id} className="paper-item">
                 <PaperCard paper={p} onOpen={onOpen} />
+                <button
+                  type="button"
+                  className="paper-delete"
+                  aria-label={`${p.title || p.filename}を削除`}
+                  disabled={deleting === p.id}
+                  onClick={() => remove(p)}
+                >
+                  削除
+                </button>
               </li>
             ))}
           </ul>
+          {papers.length > limit && (
+            <button type="button" className="btn history-more" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+              {showAll ? '閉じる' : `すべて表示（${papers.length}件）`}
+            </button>
+          )}
+          {listError && (
+            <div className="error" role="alert">
+              {listError}
+            </div>
+          )}
         </section>
       )}
     </div>

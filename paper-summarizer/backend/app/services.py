@@ -233,6 +233,7 @@ class PaperService:
         self.ask_limiter = RateLimiter(config.ASK_RATE_PER_MIN, 60)
         self.retry_limiter = RateLimiter(config.RETRY_RATE_PER_MIN, 60)
         self.quiz_limiter = RateLimiter(config.QUIZ_RATE_PER_MIN, 60)
+        self.delete_limiter = RateLimiter(config.DELETE_RATE_PER_MIN, 60)
         self.rng = rng or random.SystemRandom()
         self._quiz_making: set[str] = set()  # 問題を作っている最中の論文（同じ論文の同時の作成で上限を二重に使わない）
         self._quiz_making_lock = threading.Lock()
@@ -491,6 +492,22 @@ class PaperService:
             return False
         log.info("paper=%s analysis cancelled by user", paper_id)
         return True
+
+    def delete(self, paper_id: str, owner: str | None) -> bool:
+        """持ち主の論文を消す。解析中なら先に中止にしてから消す。消せなければ False。
+
+        走っている解析のスレッドと heartbeat は、記録が無くなると KeyError で止まる（記録を作り直さない）。
+        別の人の論文や解析中の論文を中止してしまわないよう、持ち主を確かめてから中止する。
+        """
+        paper = store.load(paper_id) if store.valid_id(paper_id) else None
+        if paper is None or owner is None or paper.get("owner") != owner:
+            return False
+        self.cancel(paper_id)
+        deleted = store.delete_paper(paper_id, owner)
+        if deleted:
+            self.progress.clear(paper_id)
+            log.info("paper=%s deleted by owner", paper_id)
+        return deleted
 
     def retry(self, paper_id: str) -> bool:
         """状態の確認と queued への変更を1回の操作で行い、二度押しで解析が2本走らないようにする。

@@ -198,6 +198,11 @@ export const api = {
   health: () => fetch('/api/health').then((r) => json<Health>(r)),
   list: () => fetch('/api/papers', { headers: withClientId() }).then((r) => json<PaperSummary[]>(r)),
   get: (id: string) => fetch(`/api/papers/${id}`).then((r) => json<Paper>(r)),
+  /** 自分でアップロードした論文を消す（解析結果・質問の記録・PDF も消え、元に戻せない）。成功は 204 で本文なし */
+  delete: (id: string) =>
+    fetch(`/api/papers/${id}`, { method: 'DELETE', headers: withClientId() }).then(async (r) => {
+      if (!r.ok) await json<unknown>(r) // 失敗は json() が ApiError にする
+    }),
   /** 解析の進捗を送る Server-Sent Events の URL */
   eventsUrl: (id: string) => `/api/papers/${id}/events`,
   upload: (file: File, lang: Lang = 'ja') => {

@@ -63,7 +63,7 @@ describe('Upload', () => {
     vi.spyOn(api, 'list').mockResolvedValue([{ id: 'old', filename: 'old.pdf', title: 'Old Paper', status: 'done', created_at: '' }])
     const onOpen = vi.fn()
     render(<Upload health={health} onOpen={onOpen} />)
-    await userEvent.click(await screen.findByRole('button', { name: /Old Paper/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Old Paper(?!を削除)/ }))
     expect(onOpen).toHaveBeenCalledWith('old')
     expect(screen.getByText('完了')).toBeInTheDocument()
   })
@@ -90,13 +90,13 @@ describe('Upload', () => {
       { id: 'c', filename: 'c.pdf', title: null, status: 'failed', created_at: 'not a date' },
     ])
     render(<Upload health={health} onOpen={vi.fn()} />)
-    const cards = await screen.findAllByRole('button', { name: /Same Paper/ })
+    const cards = await screen.findAllByRole('button', { name: /^(?!.*を削除$).*Same Paper/ })
     expect(cards).toHaveLength(2)
     expect(cards[0]).toHaveTextContent(/11月[45]日/)
     expect(cards[0]).toHaveTextContent('続きから読む')
     expect(cards[1]).toHaveTextContent(/11月[34]日/)
     for (const c of cards) expect(c).not.toHaveTextContent(/大学院生向け|学部生向け/)
-    expect(screen.getByRole('button', { name: /c\.pdf/ })).toHaveTextContent('失敗')
+    expect(screen.getByRole('button', { name: /^(?!.*を削除$).*c\.pdf/ })).toHaveTextContent('失敗')
   })
 
   it('shows how far the analysis has gone on each card', async () => {
@@ -104,7 +104,7 @@ describe('Upload', () => {
       { id: 'p', filename: 'draft.pdf', title: null, status: 'processing_step2', created_at: '2026-11-04T09:30:00+00:00' },
     ])
     const { container } = render(<Upload health={health} onOpen={vi.fn()} />)
-    const card = await screen.findByRole('button', { name: /draft\.pdf/ })
+    const card = await screen.findByRole('button', { name: /^(?!.*を削除$).*draft\.pdf/ })
     expect(card).toHaveTextContent('解析中（2/3）')
     expect(card).not.toHaveTextContent('続きから読む')
     expect(container.querySelectorAll('.progress span.filled')).toHaveLength(2)
@@ -118,7 +118,7 @@ describe('Upload', () => {
       { id: 'o', filename: 'old.pdf', title: 'Old', status: 'done', created_at: '2020-03-02T09:30:00+00:00' },
     ])
     render(<Upload health={health} onOpen={vi.fn()} />)
-    const card = await screen.findByRole('button', { name: /Old/ })
+    const card = await screen.findByRole('button', { name: /^(?!.*を削除$).*Old/ })
     expect(card).toHaveTextContent(/2020年3月2日/)
     expect(card.querySelectorAll('.paper-card-meta > span')).toHaveLength(1)
   })
