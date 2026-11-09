@@ -207,6 +207,19 @@ def test_get_paper_falls_back_to_the_record_and_hides_it_when_finished(client):
     assert client.get(f"/api/papers/{pid}").json()["progress"] is None
 
 
+def test_default_time_limit_is_below_the_hosting_limit():
+    """Firebase Hosting の rewrite の約60秒より短くして、サーバーからきれいに閉じる（環境変数を渡さない別プロセスで既定値を見る）。"""
+    import os
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if k != "SSE_MAX_SEC"}
+    out = subprocess.run(
+        [sys.executable, "-c", "from app import config; print(config.SSE_MAX_SEC)"], env=env, capture_output=True, text=True, check=True
+    )
+    assert float(out.stdout) == 50.0
+
+
 def test_get_paper_progress_is_null_without_any(client):
     pid = _new_paper(demo=False, status="queued", heartbeat_at=store.now())
     assert client.get(f"/api/papers/{pid}").json()["progress"] is None

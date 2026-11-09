@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type Paper, type Progress } from '../api'
 import { paper } from '../test/fixtures'
-import { FIRST_EVENT_MS, usePaper } from './usePaper'
+import { FIRST_EVENT_MS, MAX_SHORT_STREAMS, RECONNECT_MS, SHORT_STREAM_MS, usePaper } from './usePaper'
 
 class FakeEventSource {
   static instances: FakeEventSource[] = []
@@ -125,17 +125,62 @@ describe('usePaper with server-sent events', () => {
     expect(FakeEventSource.instances).toHaveLength(1)
   })
 
-  it('reconnects once when a working stream is closed by the server time limit', async () => {
+  it('reconnects after a pause when a long-lived stream is closed by the server time limit', async () => {
     const get = vi.spyOn(api, 'get').mockResolvedValue(running)
     renderHook(() => usePaper(paper.id))
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
     act(() => last().emit({ status: 'processing_step1', progress: writing }))
+    await act(() => vi.advanceTimersByTimeAsync(50_000))
     act(() => last().fail())
-    expect(FakeEventSource.instances).toHaveLength(2)
     expect(FakeEventSource.instances[0].closed).toBe(true)
+    expect(FakeEventSource.instances).toHaveLength(1) // すぐにはつなぎ直さない
+    await act(() => vi.advanceTimersByTimeAsync(RECONNECT_MS - 100))
+    expect(FakeEventSource.instances).toHaveLength(1)
+    await act(() => vi.advanceTimersByTimeAsync(200))
+    expect(FakeEventSource.instances).toHaveLength(2)
     act(() => last().emit({ status: 'processing_step1', progress: writing }))
     await act(() => vi.advanceTimersByTimeAsync(10_000))
     expect(get).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to polling when streams keep closing right after an event (a proxy that buffers)', async () => {
+    const get = vi.spyOn(api, 'get').mockResolvedValue(running)
+    renderHook(() => usePaper(paper.id))
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
+    for (let i = 1; i <= MAX_SHORT_STREAMS; i++) {
+      act(() => last().emit({ status: 'processing_step1', progress: writing }))
+      act(() => last().fail())
+      if (i < MAX_SHORT_STREAMS) await act(() => vi.advanceTimersByTimeAsync(RECONNECT_MS + 10))
+    }
+    expect(FakeEventSource.instances).toHaveLength(MAX_SHORT_STREAMS)
+    const before = get.mock.calls.length
+    await act(() => vi.advanceTimersByTimeAsync(4000))
+    expect(get.mock.calls.length).toBeGreaterThan(before + 1) // 問い合わせに切り替わった
+    expect(FakeEventSource.instances).toHaveLength(MAX_SHORT_STREAMS)
+  })
+
+  it('does not count a long stream as a short one', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue(running)
+    renderHook(() => usePaper(paper.id))
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
+    for (let i = 0; i < MAX_SHORT_STREAMS + 2; i++) {
+      act(() => last().emit({ status: 'processing_step1', progress: writing }))
+      await act(() => vi.advanceTimersByTimeAsync(SHORT_STREAM_MS + 1000))
+      act(() => last().fail())
+      await act(() => vi.advanceTimersByTimeAsync(RECONNECT_MS + 10))
+    }
+    expect(FakeEventSource.instances).toHaveLength(MAX_SHORT_STREAMS + 3)
+  })
+
+  it('stops a pending reconnect on unmount', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue(running)
+    const { unmount } = renderHook(() => usePaper(paper.id))
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
+    act(() => last().emit({ status: 'processing_step1', progress: writing }))
+    act(() => last().fail())
+    unmount()
+    await act(() => vi.advanceTimersByTimeAsync(RECONNECT_MS + 100))
+    expect(FakeEventSource.instances).toHaveLength(1)
   })
 
   it('ignores events that are not valid JSON', async () => {

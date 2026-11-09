@@ -5,6 +5,11 @@ export const POLL_MS = 1500
 export const MAX_BACKOFF_MS = 30_000
 /** 接続してから最初の知らせがこの時間内に届かなければ、問い合わせに切り替える（Hosting が応答をためる場合など） */
 export const FIRST_EVENT_MS = 5000
+/** 知らせを受けたあとに切れた接続は、この時間待ってからつなぎ直す（すぐにつなぐと、速いループになりうる） */
+export const RECONNECT_MS = 3000
+/** この時間より早く閉じる接続は「短い接続」。MAX_SHORT_STREAMS 回続いたら問い合わせに切り替える（1件送って閉じるプロキシ対策） */
+export const SHORT_STREAM_MS = 10_000
+export const MAX_SHORT_STREAMS = 3
 
 const isFinished = (p: { status: string }) => p.status === 'done' || p.status === 'failed' || p.status === 'cancelled'
 
@@ -58,6 +63,7 @@ export function usePaper(id: string): PaperState {
       source: null as EventSource | null,
       firstTimer: undefined as number | undefined,
       lastKey: '',
+      shortStreams: 0,
     }
 
     const closeSource = () => {
@@ -76,6 +82,7 @@ export function usePaper(id: string): PaperState {
       const source = new EventSource(api.eventsUrl(id))
       loop.source = source
       let received = false
+      const openedAt = Date.now()
       loop.firstTimer = window.setTimeout(fallbackToPolling, FIRST_EVENT_MS)
       source.onmessage = (m) => {
         if (!loop.alive || loop.source !== source) return
@@ -98,9 +105,12 @@ export function usePaper(id: string): PaperState {
       source.onerror = () => {
         if (!loop.alive || loop.source !== source) return
         if (received) {
-          // 動いていた接続が、サーバーの時間制限などで閉じた。つなぎ直す（つながらなければ問い合わせへ）
+          // 動いていた接続が、サーバーの時間制限などで閉じた。少し待ってつなぎ直す。
+          // 短い接続が続くなら（1件送って閉じるプロキシなど）、問い合わせに切り替える
           closeSource()
-          open()
+          loop.shortStreams = Date.now() - openedAt < SHORT_STREAM_MS ? loop.shortStreams + 1 : 0
+          if (loop.shortStreams >= MAX_SHORT_STREAMS) fallbackToPolling()
+          else loop.timer = window.setTimeout(open, RECONNECT_MS)
         } else {
           fallbackToPolling()
         }

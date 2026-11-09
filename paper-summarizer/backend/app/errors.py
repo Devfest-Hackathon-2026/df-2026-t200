@@ -25,6 +25,7 @@ def _status_code(e: Exception) -> int | None:
 
 def user_message(e: Exception) -> str:
     """例外の型とステータスコードで分類し、決まった文言だけを返す（例外の文字列は使わない）。"""
+    import httpx
     from pydantic import ValidationError
 
     code = _status_code(e)
@@ -35,6 +36,9 @@ def user_message(e: Exception) -> str:
     if code == 404:
         return MODEL_NOT_FOUND
     if code is not None and code >= 500:
+        return UNAVAILABLE
+    # ストリームの途中で通信が切れた・読み取りが止まった（httpx の接続・読み取りのエラー、OS の接続エラー、タイムアウト）
+    if isinstance(e, httpx.TransportError | ConnectionError | TimeoutError):
         return UNAVAILABLE
     if isinstance(e, EmptyResponseError | ValidationError):
         return BAD_RESPONSE

@@ -7,6 +7,7 @@ import json
 import re
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
@@ -353,3 +354,34 @@ def test_concept_names_ask_for_japanese_name_with_english_in_parentheses():
     from app.schemas import Concept
 
     assert "日本語名 (English name)" in Concept.model_fields["name"].description
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        httpx.ReadError("connection reset"),
+        httpx.ConnectError("refused"),
+        httpx.RemoteProtocolError("peer closed connection without sending complete message body"),
+        httpx.ReadTimeout("timed out"),
+        ConnectionResetError("reset"),
+        TimeoutError("timed out"),
+    ],
+)
+def test_stream_cut_by_a_network_error_is_unavailable_without_leaking_details(monkeypatch, exc):
+    from app import errors
+
+    def cut():
+        yield SimpleNamespace(text='{"answer": ')
+        raise exc
+
+    _install_stream(monkeypatch, cut)
+    with pytest.raises(type(exc)) as e:
+        gemini._generate("m", [], gemini.Answer, "undergrad")
+    msg = errors.user_message(e.value)
+    assert msg == errors.UNAVAILABLE and "reset" not in msg and "refused" not in msg
+
+
+def test_unrelated_errors_stay_generic():
+    from app import errors
+
+    assert errors.user_message(ValueError("x")) == errors.GENERIC
