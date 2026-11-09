@@ -32,6 +32,26 @@ const renderStep2 = (data = step2WithFlow) => {
 }
 
 describe('FlowDiagram', () => {
+  it('lists what flows on the active edges of the frame, with the shape change', () => {
+    const shaped: Flow = { ...flow, nodes: flow.nodes.map((n) => (n.id === 'out' ? { ...n, shape: 'n×2' } : n)) }
+    const { rerender } = render(<FlowDiagram flow={shaped} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
+    expect(screen.queryByRole('list', { name: 'このコマで流れるもの' })).not.toBeInTheDocument()
+    rerender(<FlowDiagram flow={shaped} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
+    const notes = screen.getByRole('list', { name: 'このコマで流れるもの' })
+    expect(notes).toHaveTextContent('入力の単語 → 特徴量ベース手法とファインチューニング手法の確率：Q, K, V（形 n×d → n×2）')
+  })
+
+  it('shows at most three notes and the count of the rest', () => {
+    const many: Flow = {
+      ...flow,
+      edges: Array.from({ length: 5 }, () => ({ from: 'in', to: 'out', label: 'x' })),
+    }
+    render(<FlowDiagram flow={many} total={2} index={1} onGo={() => {}} onNode={() => {}} />)
+    const items = screen.getByRole('list', { name: 'このコマで流れるもの' }).querySelectorAll('li')
+    expect(items).toHaveLength(4)
+    expect(items[3]).toHaveTextContent('ほか 2 件')
+  })
+
   it('shows the note, the caption of the current frame and one labelled button per node', () => {
     render(<FlowDiagram flow={flow} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
     expect(screen.getByText('AIが論文から作った図解です。根拠ページで確かめてください')).toBeInTheDocument()

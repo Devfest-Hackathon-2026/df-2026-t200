@@ -2228,6 +2228,11 @@ body.qa-resizing .qa-body {
   margin: 0.4rem 0;
   font-weight: 600;
 }
+.flow-notes {
+  margin: 0 0 0.4rem;
+  padding-left: 1.2em;
+  overflow-wrap: anywhere;
+}
 @media (prefers-reduced-motion: reduce) {
   .flow-edge,
   .flow-node {
