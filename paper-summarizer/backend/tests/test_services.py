@@ -363,8 +363,9 @@ def test_cancel_during_gemini_call_discards_that_result_and_stops():
     t.join(5)
     paper = store.load(pid)
     assert paper["status"] == "cancelled"
-    assert set(paper["results"]) == {"step1"}  # 終わった Step 1 は残し、中止後に返った Step 2 は捨てる
-    assert fake.calls == ["step1", "step2"]  # Step 3 には進まない
+    # 終わった Step 1 は残し、中止後に返った Step 2 は捨てる（同時に走る Step 3 は、中止より前に終わっていれば残る）
+    assert set(paper["results"]) - {"step3"} == {"step1"}
+    assert sorted(fake.calls) == ["step1", "step2", "step3"]  # Step 2・3 は同時に始まっているが、どちらの結果も捨てる
 
 
 def test_cancel_only_while_queued_or_processing():

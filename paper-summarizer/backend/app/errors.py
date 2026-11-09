@@ -5,6 +5,7 @@ RATE_LIMIT = "Gemini のレート制限に達しました。少し時間をお�
 MODEL_NOT_FOUND = "指定したモデルが見つかりません。サーバーのモデル設定（ANALYSIS_MODEL / QA_MODEL）を確認してください。"
 UNAVAILABLE = "Gemini が混み合っているか一時的に使えません。少し時間をおいて再実行してください。"
 BAD_RESPONSE = "Gemini から有効な応答が得られませんでした。もう一度お試しください。"
+TAKEN_OVER_TOO_MANY = "解析が何度も中断されました。時間をおいて再実行してください。"
 GENERIC = "解析中にエラーが発生しました。時間をおいて再実行してください。"
 
 
