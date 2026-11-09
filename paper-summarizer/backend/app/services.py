@@ -9,6 +9,7 @@ import logging
 import random
 import threading
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import ModuleType
@@ -20,6 +21,7 @@ from . import config, errors, mock, quiz, store
 from .check_service import ConceptCheckService
 from .errors import PaperNotFound, QuotaExceeded, RateLimited
 from .foundations import check_foundations
+from .heartbeat import Heartbeat
 from .pdf_utils import extract_pages, normalize, verify_all
 from .quota import DailyQuota
 from .ratelimit import RateLimiter
@@ -123,13 +125,21 @@ def finalize_step(key: str, out: dict[str, Any], norm_pages: list[str]) -> dict[
     return check_foundations(verified, norm_pages) if key == "step1" else verified
 
 
-def is_stale(paper: dict[str, Any]) -> bool:
-    stamp = paper.get("updated_at") or paper.get("created_at")
+def last_alive(paper: dict[str, Any]) -> datetime | None:
+    """解析のスレッドが最後に生きていた時刻。heartbeat_at、無ければ updated_at、created_at の順。読めなければ None。"""
+    stamp = paper.get("heartbeat_at") or paper.get("updated_at") or paper.get("created_at")
     try:
-        last = datetime.fromisoformat(stamp)  # type: ignore[arg-type]
+        return datetime.fromisoformat(stamp)  # type: ignore[arg-type]
     except (TypeError, ValueError):
+        return None
+
+
+def is_stale(paper: dict[str, Any], now: datetime | None = None) -> bool:
+    """STALE_AFTER_SEC（既定10分）より長く更新がない。引き継ぎ（TAKEOVER_AFTER_SEC）が働かなかったときの保険で、手動の再実行を許す。"""
+    last = last_alive(paper)
+    if last is None:
         return True
-    return (datetime.now(UTC) - last).total_seconds() > config.STALE_AFTER_SEC
+    return ((now or datetime.now(UTC)) - last).total_seconds() > config.STALE_AFTER_SEC
 
 
 CANCELLED = "cancelled"
@@ -146,7 +156,7 @@ def not_cancelled(paper: dict[str, Any]) -> bool:
 
 
 def retryable(paper: dict[str, Any]) -> bool:
-    """失敗した解析・中止した解析と、サーバー停止などで止まったままの解析（一定時間更新なし）を再実行できる。"""
+    """失敗した解析・中止した解析と、引き継ぎでも動かなかった止まったままの解析（is_stale）を再実行できる。"""
     status = paper.get("status", "")
     if status in ("failed", CANCELLED):
         return True
@@ -200,7 +210,9 @@ class PaperService:
         max_jobs: int = 2,
         starter: Callable[[str], None] | None = None,
         rng: random.Random | None = None,
+        heartbeat_sec: float | None = None,
     ):
+        self._heartbeat_sec = config.HEARTBEAT_SEC if heartbeat_sec is None else heartbeat_sec
         # キーは論文の demo フラグ
         self.analyzers: Mapping[bool, Analyzer] = analyzers or {True: DemoAnalyzer(), False: GeminiAnalyzer()}
         # 同時に走る解析ジョブ数を制限（Cloud Tasks の同時実行数制限に相当。API のレート制限対策）
@@ -290,7 +302,7 @@ class PaperService:
         threading.Thread(target=self.run_analysis, args=(paper_id,), daemon=True).start()
 
     def run_analysis(self, paper_id: str) -> None:
-        """Step 1 → 2 → 3 を順に生成し、終わったものから保存する（画面は届いた順に表示）。
+        """Step 1 を生成し、続けて Step 2・3 を同時に生成して、終わったものから保存する（画面は届いた順に表示）。
 
         何度呼んでも同じ結果になる: 解析済みなら何もしない、終わった Step は飛ばす、
         同じ論文の解析がこのプロセスで走っていれば何もしない。
@@ -319,25 +331,19 @@ class PaperService:
             src = self.source(paper)
             analyzer = self.analyzer_for(paper)
             results = dict(paper.results)
-            for key in STEP_KEYS:
-                if results.get(key):
-                    continue
-                # 中止されていたら次の Step に進まない（状態の確認と書き込みを1回の操作で行う）
-                if store.transition(paper_id, not_cancelled, status=f"processing_{key}") is None:
-                    log.info("paper=%s cancelled before %s", paper_id, key)
+            # 解析中は heartbeat_at を書き続ける（スレッドが消えたら止まり、別のプロセスが引き継げる）
+            with Heartbeat(paper_id, self._heartbeat_sec, running):
+                if not results.get("step1"):
+                    # 中止されていたら進まない（状態の確認と書き込みを1回の操作で行う）
+                    if store.transition(paper_id, not_cancelled, status="processing_step1", heartbeat_at=store.now()) is None:
+                        log.info("paper=%s cancelled before step1", paper_id)
+                        return
+                    log.info("paper=%s step1 start (demo=%s)", paper_id, paper.demo)
+                    results = {**results, "step1": finalize_step("step1", analyzer.step1(src), src.norm_pages)}
+                    if not self._save_result(paper_id, "step1", results["step1"]):
+                        return
+                if not self._run_parallel(paper_id, analyzer, src, results):
                     return
-                log.info("paper=%s %s start (demo=%s)", paper_id, key, paper.demo)
-                results[key] = finalize_step(key, _generate_step(analyzer, key, src, results), src.norm_pages)
-                # Gemini の呼び出し中に中止されていたら、その結果は保存せずに終える
-                if (
-                    store.mutate(
-                        paper_id, lambda p, k=key: None if p.get("status") == CANCELLED else {**p, "results": {**p.get("results", {}), k: results[k]}}
-                    )
-                    is None
-                ):
-                    log.info("paper=%s cancelled during %s; result discarded", paper_id, key)
-                    return
-                log.info("paper=%s %s done", paper_id, key)
             store.transition(paper_id, not_cancelled, status="done", error=None, analysis_version=config.ANALYSIS_VERSION)
         except Exception as e:  # noqa: BLE001
             # 画面には決まった文言だけを返し、詳細は paper_id 付きでログに残す
@@ -347,6 +353,89 @@ class PaperService:
                 store.transition(paper_id, not_cancelled, status="failed", error=errors.user_message(e))
             except KeyError:
                 log.warning("paper=%s disappeared during analysis", paper_id)
+
+    @staticmethod
+    def _save_result(paper_id: str, key: str, value: dict[str, Any]) -> bool:
+        """結果を保存する。Gemini の呼び出し中に中止されていたら保存せず False（状態の確認と書き込みは1回の操作）。"""
+        saved = store.mutate(paper_id, lambda p: None if p.get("status") == CANCELLED else {**p, "results": {**p.get("results", {}), key: value}})
+        if saved is None:
+            log.info("paper=%s cancelled during %s; result discarded", paper_id, key)
+        return saved is not None
+
+    def _run_parallel(self, paper_id: str, analyzer: Analyzer, src: PaperSource, results: dict[str, Any]) -> bool:
+        """終わっていない Step 2・3 を同時に生成する。続けられなければ（中止）False。
+
+        Step 2 と Step 3 はどちらも Step 1 の結果だけを使い、互いの結果を使わないので並べて走らせられる。
+        画面の status は processing_step2 / processing_step3 の表記を変えず、まだ終わっていない方の Step を示す
+        （Step 2 が終われば processing_step3 になる）。片方が失敗してももう片方は最後まで走らせて保存し、
+        そのあとで例外を投げる。再実行は結果のない Step だけを作り直す。
+        """
+        pending = [k for k in ("step2", "step3") if not results.get(k)]
+        if not pending:
+            return True
+        if store.transition(paper_id, not_cancelled, status=f"processing_{pending[0]}") is None:
+            log.info("paper=%s cancelled before %s", paper_id, pending[0])
+            return False
+        lock = threading.Lock()
+        remaining = set(pending)
+
+        def work(key: str) -> bool:
+            log.info("paper=%s %s start (demo=%s)", paper_id, key, src.paper.demo)
+            out = finalize_step(key, _generate_step(analyzer, key, src, results), src.norm_pages)
+            if not self._save_result(paper_id, key, out):
+                return False
+            log.info("paper=%s %s done", paper_id, key)
+            with lock:
+                remaining.discard(key)
+                left = sorted(remaining)
+            if left:  # 終わっていない方の Step を画面に示す
+                store.transition(paper_id, running, status=f"processing_{left[0]}")
+            return True
+
+        with ThreadPoolExecutor(max_workers=len(pending), thread_name_prefix=f"steps-{paper_id}") as pool:
+            futures = [pool.submit(work, k) for k in pending]
+        outcomes = [f.result() for f in futures]  # 失敗は最初の例外をそのまま投げる（with を抜けた時点で全部終わっている）
+        return all(outcomes)
+
+    def take_over(self, paper_id: str, now: datetime | None = None) -> dict[str, Any] | None:
+        """止まった解析（heartbeat が TAKEOVER_AFTER_SEC より古い queued / processing_*）を引き継いで続きから走らせる。
+
+        引き継いだら更新後の記録を、引き継がなければ None を返す。このプロセスで走っている解析・中止した論文・
+        新しい heartbeat のものは引き継がない。状態の確認と書き込みを1回の操作で行うので、同時に呼ばれても1回だけ引き継ぐ。
+        同じ解析の続きなので、解析の1日の上限には数えない。上限（MAX_TAKEOVERS）を超えたら failed にして再実行に任せる。
+        """
+        with self._running_lock:
+            if paper_id in self._running:
+                return None
+        at = now or datetime.now(UTC)
+        info: dict[str, Any] = {}
+
+        def decide(p: dict[str, Any]) -> dict[str, Any] | None:
+            if not running(p):
+                return None
+            last = last_alive(p)
+            age = float("inf") if last is None else (at - last).total_seconds()
+            if age <= config.TAKEOVER_AFTER_SEC:
+                return None
+            count = int(p.get("takeovers") or 0)
+            if count >= config.MAX_TAKEOVERS:
+                info["gave_up"] = count
+                return {**p, "status": "failed", "error": errors.TAKEN_OVER_TOO_MANY}
+            info.update(age=age, attempt=count + 1)
+            return {**p, "takeovers": count + 1, "heartbeat_at": at.isoformat()}
+
+        try:
+            paper = store.mutate(paper_id, decide)
+        except KeyError:
+            return None
+        if "gave_up" in info:
+            log.warning("paper=%s gave up after %d takeovers", paper_id, info["gave_up"])
+            return None
+        if paper is None:
+            return None
+        log.info("paper=%s taken over (stale heartbeat %.0fs, attempt %d)", paper_id, info["age"], info["attempt"])
+        self.start(paper_id)
+        return paper
 
     def cancel(self, paper_id: str) -> bool:
         """解析待ち・解析中の論文を中止する。中止できない状態（完了・失敗・中止済み）なら False。
@@ -371,6 +460,8 @@ class PaperService:
             raise QuotaExceeded
         # 古い版で途中まで作った結果は、今の版のプロンプトで作り直す（古い結果に新しい版を付けない）
         restart = {} if paper.get("analysis_version") == config.ANALYSIS_VERSION else {"results": {}, "analysis_version": config.ANALYSIS_VERSION}
+        # 引き継ぎの回数と古い heartbeat を消す（再実行の直後に、古い heartbeat で引き継がれないように）
+        restart = {**restart, "takeovers": 0, "heartbeat_at": None}
         if store.transition(paper_id, retryable, status="queued", error=None, **restart) is None:
             return False
         self.start(paper_id)

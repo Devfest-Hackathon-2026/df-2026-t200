@@ -44,6 +44,7 @@ from .services import (
     QuotaExceeded,
     RateLimited,
     retryable,
+    running,
 )
 
 log = logging.getLogger("paper")
@@ -94,10 +95,12 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/api/papers")
-def list_papers(response: Response, client_id: ClientId = None) -> list[dict[str, Any]]:
+def list_papers(response: Response, service: Service, client_id: ClientId = None) -> list[dict[str, Any]]:
     # ブラウザごとに中身が違うので、Firebase Hosting の CDN やブラウザにキャッシュさせない
     response.headers["Cache-Control"] = "private, no-store"
-    return store.list_papers(store.owner_of(client_id))
+    items = store.list_papers(store.owner_of(client_id))
+    # 止まった解析があれば引き継ぐ（引き継いだ論文は、更新後の状態を返す）
+    return [{**i, "status": taken["status"]} if running(i) and (taken := service.take_over(i["id"])) else i for i in items]
 
 
 # PDF の解析・ハッシュ計算・ファイル書き込みはすべて同期処理なので、普通の def にして
@@ -153,8 +156,11 @@ def _process_upload(service: PaperService, file: UploadFile, level: str, lang: s
 
 
 @app.get("/api/papers/{paper_id}")
-def get_paper(paper_id: str) -> dict[str, Any]:
-    return _public(_load_or_404(paper_id))
+def get_paper(paper_id: str, service: Service) -> dict[str, Any]:
+    paper = _load_or_404(paper_id)
+    if running(paper):  # 止まった解析なら、ここで引き継いで続きから走らせる
+        paper = service.take_over(paper_id) or store.load(paper_id) or paper
+    return _public(paper)
 
 
 @app.get("/api/papers/{paper_id}/pdf", response_model=None)

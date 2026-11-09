@@ -51,7 +51,15 @@ MAX_PAGES = int(os.getenv("MAX_PAGES", "100"))
 # 抽出する本文の文字数の合計の上限（通常の論文 100 ページで数十万字程度）
 MAX_TOTAL_CHARS = int(os.getenv("MAX_TOTAL_CHARS", "1000000"))
 
-# この秒数より長く更新のない queued / processing_* は、サーバーが途中で落ちたとみなして再実行を受け付ける。
+# 解析中のスレッドが記録に heartbeat_at を書く間隔（秒）。Gemini の呼び出し中も書く
+HEARTBEAT_SEC = float(os.getenv("HEARTBEAT_SEC", "10"))
+# queued / processing_* の heartbeat（無ければ updated_at か created_at）がこの秒数より古いと、解析のスレッドが
+# 消えた（Cloud Run のインスタンスの入れ替えなど）とみなし、論文の取得・一覧のときに別のプロセスが続きから引き継ぐ
+TAKEOVER_AFTER_SEC = int(os.getenv("TAKEOVER_AFTER_SEC", "45"))
+# 同じ解析を引き継ぐ回数の上限。超えたら failed にして、画面の「再実行」に任せる（引き継ぎの無限ループを防ぐ）
+MAX_TAKEOVERS = int(os.getenv("MAX_TAKEOVERS", "3"))
+# 引き継ぎが働かなかったときの保険。この秒数より長く更新（heartbeat を含む）のない queued / processing_* は、
+# 手動の再実行（retry）を受け付ける。通常は TAKEOVER_AFTER_SEC の引き継ぎが先に働くので、この値には届かない
 STALE_AFTER_SEC = int(os.getenv("STALE_AFTER_SEC", "600"))
 
 # /ask と /retry の論文ごとの回数制限（1分あたり）。/ask は毎回 PDF 全体を Gemini に送るので費用に直結する。
