@@ -5,9 +5,12 @@ Step 1 全体は失敗させない。使えない項目だけ外し（既定値�
 """
 
 import copy
+import logging
 from typing import Any
 
 from .schemas import Importance, Origin
+
+log = logging.getLogger("paper")
 
 _IMPORTANCE = {m.value for m in Importance}
 _ORIGIN = {m.value for m in Origin}
@@ -62,6 +65,31 @@ def _too_deep(concepts: list[dict[str, Any]]) -> set[str]:
     return {i for i, n in depth.items() if n > MAX_INFERENCE_DEPTH}
 
 
+def concept_stats(concepts: list[dict[str, Any]]) -> dict[str, int]:
+    """前提知識の依存の密さを数える。concepts=概念数 / edges=依存の本数 / isolated=どの概念とも依存でつながらない概念の数 /
+    max_depth=依存の最長の連なり（辺の数。画面の層の数-1 と同じ）。自分自身と存在しない概念への依存は数えず、循環は打ち切る。"""
+    ids = {c["id"] for c in concepts if isinstance(c.get("id"), str)}
+    deps = {i: [d for d in (c.get("depends_on") or []) if d in ids and d != i] for c in concepts if isinstance(i := c.get("id"), str)}
+    linked = {i for i, ds in deps.items() if ds} | {d for ds in deps.values() for d in ds}
+    memo: dict[str, int] = {}
+
+    def depth(i: str, stack: frozenset[str]) -> int:
+        if i in memo:
+            return memo[i]
+        if i in stack:
+            return 0
+        d = max((depth(x, stack | {i}) + 1 for x in deps[i]), default=0)
+        memo[i] = d
+        return d
+
+    return {
+        "concepts": len(deps),
+        "edges": sum(len(set(ds)) for ds in deps.values()),
+        "isolated": len(deps) - len(linked),
+        "max_depth": max((depth(i, frozenset()) for i in deps), default=0),
+    }
+
+
 def clean_concepts(step1: dict[str, Any]) -> dict[str, Any]:
     """前提知識を整える。元のデータは変えず、新しい dict を返す。
 
@@ -72,6 +100,10 @@ def clean_concepts(step1: dict[str, Any]) -> dict[str, Any]:
     drop = _too_deep(concepts)
     if drop:
         concepts = [{**c, "depends_on": [d for d in c.get("depends_on") or [] if d not in drop]} for c in concepts if c.get("id") not in drop]
+    try:  # ログのための計算なので、失敗しても Step 1 は落とさない。孤立は外さず、数だけ残す
+        log.info("concept graph: %s", " ".join(f"{k}={v}" for k, v in concept_stats(concepts).items()))
+    except Exception:  # noqa: BLE001
+        log.warning("concept graph stats failed", exc_info=True)
     return {**step1, "concepts": concepts}
 
 

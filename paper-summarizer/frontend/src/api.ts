@@ -56,7 +56,7 @@ export type Figure = {
 }
 export type Stage = { title: string; explanation: string; evidence: Evidence[]; figures: Figure[]; equations: Equation[] }
 export type FlowKind = 'input' | 'process' | 'output'
-export type FlowNode = { id: string; label: string; kind: FlowKind; shape: string | null; evidence: Evidence[] }
+export type FlowNode = { id: string; label: string; kind: FlowKind; shape: string | null; evidence: Evidence[]; group?: string | null }
 export type FlowEdge = { from: string; to: string; label: string }
 export type FlowFrame = { stage_index: number; active_nodes: string[]; active_edges: string[]; caption: string; evidence: Evidence[] }
 export type Flow = { nodes: FlowNode[]; edges: FlowEdge[]; frames: FlowFrame[] }

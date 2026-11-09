@@ -1999,6 +1999,44 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   inset: 0;
   overflow: visible;
 }
+.flow-bands {
+  position: absolute;
+  inset: 0;
+}
+.flow-band {
+  --band: 120, 140, 190;
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(var(--band), 0.55);
+  border-radius: 14px;
+  background: rgba(var(--band), 0.08);
+}
+.flow-band-1 {
+  --band: 220, 150, 40;
+}
+.flow-band-2 {
+  --band: 60, 150, 110;
+}
+.flow-band-3 {
+  --band: 170, 90, 150;
+}
+.flow-band.label-below .flow-band-label {
+  top: auto;
+  bottom: 4px;
+}
+.flow-band-label {
+  position: absolute;
+  top: 4px;
+  left: 10px;
+  right: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-2);
+}
 .flow-edge {
   fill: none;
   stroke: #b4c3e0;
