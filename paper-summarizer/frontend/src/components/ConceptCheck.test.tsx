@@ -158,7 +158,7 @@ describe('ConceptCheck', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('本日の利用上限')
   })
 
-  it('moves focus to the heading after the answer is checked', async () => {
+  it('moves focus to the summary after the answer is checked', async () => {
     vi.spyOn(api, 'getCheck').mockResolvedValue({ check: view })
     vi.spyOn(api, 'answerCheck').mockResolvedValue({ check: done })
     renderCheck()
@@ -166,6 +166,130 @@ describe('ConceptCheck', () => {
     await userEvent.click(screen.getAllByRole('radio', { name: '分からない' })[1])
     await userEvent.click(screen.getByRole('button', { name: '答え合わせ' }))
     await screen.findByText('内積は類似度の計算に使う。')
-    expect(screen.getByRole('heading', { name: '確認モード' })).toHaveFocus()
+    expect(summaryOf()).toHaveFocus()
+  })
+})
+
+const summaryOf = () => document.querySelector('.concept-check > summary') as HTMLElement
+const sheet = () => document.querySelector('.concept-check') as HTMLDetailsElement
+const rowDetails = () => Array.from(document.querySelectorAll<HTMLDetailsElement>('.check-row > details'))
+
+describe('ConceptCheck の開け閉め', () => {
+  it('is a closed <details> with a one-line summary before any questions exist', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: null })
+    renderCheck()
+    await screen.findByRole('button', { name: '問題に答えて仕分ける' })
+    expect(sheet().tagName).toBe('DETAILS')
+    expect(sheet()).not.toHaveAttribute('open')
+    expect(summaryOf()).toHaveTextContent('確認モード：問題に答えて仕分ける')
+  })
+
+  it('summarises the score once the answers are checked, and stays closed by default', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: done })
+    renderCheck()
+    await screen.findByText('内積は類似度の計算に使う。')
+    expect(summaryOf()).toHaveTextContent('確認モード：2問中1問正解')
+    expect(sheet()).not.toHaveAttribute('open')
+  })
+
+  it('opens by itself right after the questions are made, and remembers it per paper', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: null })
+    vi.spyOn(api, 'createCheck').mockResolvedValue({ check: view })
+    const { unmount } = render(
+      <JumpContext.Provider value={vi.fn()}>
+        <ConceptCheck paperId="pid" concepts={step1.concepts} targets={[dot, expectation]} onJudge={vi.fn()} />
+      </JumpContext.Provider>,
+    )
+    await userEvent.click(summaryOf())
+    await userEvent.click(await screen.findByRole('button', { name: '問題に答えて仕分ける' }))
+    await screen.findByText('内積の使いどころはどれか。')
+    expect(sheet()).toHaveAttribute('open')
+    unmount()
+    expect(JSON.parse(localStorage.getItem('checkOpen:pid') ?? 'null')).toBe('open')
+  })
+
+  it('is open while a draft of answers exists', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: view })
+    localStorage.setItem('checkDraft:pid', JSON.stringify({ checkId: 'ck1', choices: { q1: 0 } }))
+    renderCheck()
+    await screen.findByText('内積の使いどころはどれか。')
+    expect(sheet()).toHaveAttribute('open')
+  })
+
+  it('is closed for questions without any answer yet', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: view })
+    renderCheck()
+    await screen.findByText('内積の使いどころはどれか。')
+    expect(sheet()).not.toHaveAttribute('open')
+    expect(summaryOf()).toHaveTextContent('確認モード：2問に回答中')
+  })
+
+  it('remembers what the student chose per paper, even against the default', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: view })
+    localStorage.setItem('checkDraft:pid', JSON.stringify({ checkId: 'ck1', choices: { q1: 0 } }))
+    const first = render(
+      <JumpContext.Provider value={vi.fn()}>
+        <ConceptCheck paperId="pid" concepts={step1.concepts} targets={[dot]} onJudge={vi.fn()} />
+      </JumpContext.Provider>,
+    )
+    await screen.findByText('内積の使いどころはどれか。')
+    await userEvent.click(summaryOf()) // 下書きで開いているのを閉じる
+    expect(sheet()).not.toHaveAttribute('open')
+    first.unmount()
+    expect(JSON.parse(localStorage.getItem('checkOpen:pid') ?? 'null')).toBe('closed')
+    renderCheck()
+    await screen.findByText('内積の使いどころはどれか。')
+    expect(sheet()).not.toHaveAttribute('open')
+    // 別の論文には引き継がない
+    expect(localStorage.getItem('checkOpen:other')).toBeNull()
+  })
+
+  it('still works when localStorage throws', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: null })
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('denied')
+    })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('denied')
+    })
+    renderCheck()
+    await screen.findByRole('button', { name: '問題に答えて仕分ける' })
+    await userEvent.click(summaryOf())
+    expect(sheet()).toHaveAttribute('open')
+  })
+})
+
+describe('答え合わせ後の各問題', () => {
+  it('lists every question as a <details> with the concept and the result, opening only the ones to review', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: done })
+    renderCheck()
+    await screen.findByText('内積は類似度の計算に使う。')
+    const rows = rowDetails()
+    expect(rows).toHaveLength(2)
+    expect(rows[0].querySelector('summary')).toHaveTextContent(/内積.*正解/)
+    expect(rows[1].querySelector('summary')).toHaveTextContent(/期待値.*分からない/)
+    expect(rows[0]).not.toHaveAttribute('open') // 正解は読み返さなくてよい
+    expect(rows[1]).toHaveAttribute('open') // 分からない・不正解は解説を読む
+  })
+
+  it('labels a wrong answer as incorrect and opens it', async () => {
+    const wrong: Check = {
+      ...done,
+      result: { ...done.result!, items: [{ ...done.result!.items[0], is_correct: false, chosen: 1 }, done.result!.items[1]] },
+    }
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: wrong })
+    renderCheck()
+    await screen.findByText('内積は類似度の計算に使う。')
+    const first = rowDetails()[0]
+    expect(first.querySelector('summary')).toHaveTextContent('不正解')
+    expect(first).toHaveAttribute('open')
+  })
+
+  it('shows the details of a closed question when its summary is opened', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: done })
+    renderCheck()
+    await screen.findByText('内積は類似度の計算に使う。')
+    await userEvent.click(rowDetails()[0].querySelector('summary')!)
+    expect(rowDetails()[0]).toHaveAttribute('open')
   })
 })

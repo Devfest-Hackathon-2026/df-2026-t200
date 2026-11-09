@@ -6,6 +6,9 @@ import { EMPTY_CHECK_DRAFT, isCheckDraft, type CheckDraft } from './conceptCheck
 
 const isAbort = (e: unknown, signal: AbortSignal) => signal.aborted || (e instanceof DOMException && e.name === 'AbortError')
 const VERDICT_LABEL = { known: '知っている', unknown: '知らない' } as const
+/** 欄を開けているか閉じているか。null は「選んでいない」（そのときは状況で決める） */
+type OpenPref = 'open' | 'closed' | null
+const isOpenPref = (v: unknown): v is OpenPref => v === null || v === 'open' || v === 'closed'
 
 type Props = {
   paperId: string
@@ -20,10 +23,12 @@ type Props = {
 export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
   const [check, setCheck] = useState<Check | null | undefined>(undefined) // undefined = 読み込み中
   const [draft, setDraft] = useLocalStorageState<CheckDraft>(`checkDraft:${paperId}`, EMPTY_CHECK_DRAFT, isCheckDraft)
+  // 開閉は論文ごとに覚える。覚えていなければ、回答の途中（下書きあり）のときだけ開いておく
+  const [pref, setPref] = useLocalStorageState<OpenPref>(`checkOpen:${paperId}`, null, isOpenPref)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const request = useRef<AbortController | null>(null)
-  const headingRef = useRef<HTMLHeadingElement>(null)
+  const summaryRef = useRef<HTMLElement>(null)
   const answered = useRef(false) // 回答した直後だけ、結果の見出しへフォーカスを移す
   const uid = useId()
   const nameOf = (id: string) => concepts.find((c) => c.id === id)?.name ?? id
@@ -42,8 +47,8 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
   }, [paperId])
   useEffect(() => () => request.current?.abort(), [])
   useEffect(() => {
-    if (answered.current && check?.submitted && headingRef.current) {
-      headingRef.current.focus()
+    if (answered.current && check?.submitted && summaryRef.current) {
+      summaryRef.current.focus()
       answered.current = false
     }
   }, [check])
@@ -68,18 +73,23 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
   }
 
   const create = (force: boolean) =>
-    run('問題を作っています…', (signal) =>
-      api
-        .createCheck(
-          paperId,
-          targets.map((t) => t.id),
-          force,
-          signal,
-        )
-        .then((r) => r.check),
+    run(
+      '問題を作っています…',
+      (signal) =>
+        api
+          .createCheck(
+            paperId,
+            targets.map((t) => t.id),
+            force,
+            signal,
+          )
+          .then((r) => r.check),
+      () => setPref('open'), // 作った直後は、そのまま答え始められるよう開く
     )
 
   const choices = check && draft.checkId === check.id ? draft.choices : {}
+  const hasDraft = check != null && !check.submitted && draft.checkId === check.id && Object.keys(choices).length > 0
+  const isOpen = pref ? pref === 'open' : hasDraft
   const complete = check !== null && check !== undefined && check.items.every((it) => choices[it.id] !== undefined)
   const submit = () => {
     if (!check || !complete) return
@@ -144,36 +154,40 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
   } else if (check.submitted && check.result) {
     body = (
       <>
-        <p className="small">
-          <strong>
-            {check.result.items.length}問中 {check.result.correct}問 正解
-          </strong>
-        </p>
         <ol className="check-rows">
           {check.result.items.map((it) => {
             const verdict = check.result!.verdicts[it.concept_id]
+            const outcome = it.dont_know ? '分からない' : it.is_correct ? '正解' : '不正解'
             return (
               <li key={it.id} className={`check-row ${it.is_correct ? 'ok' : 'ng'}`}>
-                <p className="check-concept">
-                  <strong>{nameOf(it.concept_id)}</strong>
-                  {it.general_knowledge && <span className="inference-tag">一般知識による問題</span>}
-                </p>
-                <p className="check-question">{it.question}</p>
-                <ul className="check-options">
-                  {it.options.map((o, i) => (
-                    <li key={i} className={`${i === it.correct_index ? 'correct' : ''} ${i === it.chosen ? 'chosen' : ''}`.trim()}>
-                      {o}
-                      {i === it.correct_index && <span className="badge">正解</span>}
-                      {i === it.chosen && <span className="badge">あなたの答え</span>}
-                    </li>
-                  ))}
-                </ul>
-                <p className="small">{it.explanation}</p>
-                {it.evidence && <EvidenceList items={[it.evidence]} />}
-                <p className="small">
-                  {it.dont_know ? '「分からない」を選びました。' : it.is_correct ? '正解です。' : '不正解です。'}{' '}
-                  <span>判定は「{VERDICT_LABEL[verdict ?? 'unknown']}」</span>
-                </p>
+                {/* 正解した問題は解説を読み返す必要が薄いので閉じ、不正解と「分からない」は解説を読んでほしいので開いておく */}
+                <details open={!it.is_correct}>
+                  <summary className="check-row-summary">
+                    <strong>{nameOf(it.concept_id)}</strong>
+                    <span className="check-outcome">{outcome}</span>
+                  </summary>
+                  {it.general_knowledge && (
+                    <p className="check-concept">
+                      <span className="inference-tag">一般知識による問題</span>
+                    </p>
+                  )}
+                  <p className="check-question">{it.question}</p>
+                  <ul className="check-options">
+                    {it.options.map((o, i) => (
+                      <li key={i} className={`${i === it.correct_index ? 'correct' : ''} ${i === it.chosen ? 'chosen' : ''}`.trim()}>
+                        {o}
+                        {i === it.correct_index && <span className="badge">正解</span>}
+                        {i === it.chosen && <span className="badge">あなたの答え</span>}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="small">{it.explanation}</p>
+                  {it.evidence && <EvidenceList items={[it.evidence]} />}
+                  <p className="small">
+                    {it.dont_know ? '「分からない」を選びました。' : it.is_correct ? '正解です。' : '不正解です。'}{' '}
+                    <span>判定は「{VERDICT_LABEL[verdict ?? 'unknown']}」</span>
+                  </p>
+                </details>
               </li>
             )
           })}
@@ -215,15 +229,35 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
     )
   }
 
+  const summary =
+    check?.submitted && check.result
+      ? `${check.result.items.length}問中${check.result.correct}問正解`
+      : check
+        ? `${check.items.length}問に回答中`
+        : check === null
+          ? '問題に答えて仕分ける'
+          : '読み込み中'
+
   return (
-    <section className="concept-check sheet" aria-label="確認モード">
-      <h3 ref={headingRef} tabIndex={-1}>
-        確認モード
-      </h3>
-      {notice}
-      {body}
-      {errorBox}
-      {status}
-    </section>
+    <details
+      className="concept-check sheet"
+      aria-label="確認モード"
+      open={isOpen}
+      onToggle={(e) => {
+        // 開閉の状態を React が変えたときにも toggle は届く。人が操作して食い違ったときだけ覚える
+        const now = e.currentTarget.open
+        if (now !== isOpen) setPref(now ? 'open' : 'closed')
+      }}
+    >
+      <summary ref={summaryRef} className="check-summary">
+        <h3>確認モード：{summary}</h3>
+      </summary>
+      <div className="check-body">
+        {notice}
+        {body}
+        {errorBox}
+        {status}
+      </div>
+    </details>
   )
 }

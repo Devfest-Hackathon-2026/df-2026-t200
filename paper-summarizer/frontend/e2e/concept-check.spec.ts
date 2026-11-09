@@ -10,6 +10,9 @@ test('sorts concepts by answering check questions, on a phone width too', async 
   const paperId = page.url().match(/#\/paper\/([0-9a-f]{16})$/)![1]
   await expect(page.getByRole('heading', { name: '3行でつかむ' })).toBeVisible({ timeout: 20_000 })
 
+  // 確認モードは最初は閉じている。1行の要約から開く
+  await expect(page.getByText('確認モード：問題に答えて仕分ける')).toBeVisible()
+  await page.locator('.concept-check > summary').click()
   const start = page.getByRole('button', { name: '問題に答えて仕分ける' })
   await expect(start).toBeEnabled()
   await expect(page.getByText(/AIが作った確認問題です/)).toBeVisible()
