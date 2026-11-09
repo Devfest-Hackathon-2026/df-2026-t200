@@ -1513,39 +1513,49 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   background-size: 36px 14px;
   background-position: center;
 }
-/* 欄の上の縁の取っ手。つかんで上下に動かす（タッチでも動くよう、ブラウザの縦スクロールは止める） */
+/* 欄の上の縁の取っ手。つかんで上下に動かす（タッチでも動くよう、ブラウザの縦スクロールは止める）。
+   リングの穴の帯（.qa.open::before）には重ねず、その上の16pxを当たり判定にする。
+   ふだんは薄い1pxの線と薄い灰色のつまみだけ（帯の4px上に浮かせて、中心を線に合わせる）で、重ねたとき・ドラッグ中・フォーカス時に青く濃くする */
 .qa-resizer {
   position: absolute;
   z-index: 2;
-  top: -8px;
+  top: -16px;
   left: 0;
   right: 0;
-  height: 26px;
+  height: 16px;
   cursor: row-resize;
   touch-action: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+.qa-resizer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 5px;
+  height: 1px;
+  background: var(--line);
 }
 .qa-resizer::after {
   content: '';
-  width: 48px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--ink-2);
-  border: 1.5px solid var(--sheet);
-  box-sizing: content-box;
-  opacity: 0.75;
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: #aeb4ba;
 }
+.qa-resizer:hover::before,
+.qa-resizer:focus-visible::before,
+body.qa-resizing .qa-resizer::before,
 .qa-resizer:hover::after,
+.qa-resizer:focus-visible::after,
 body.qa-resizing .qa-resizer::after {
   background: var(--blue);
-  opacity: 1;
 }
 .qa-resizer:focus-visible {
-  outline: 3px solid var(--blue);
-  outline-offset: -3px;
-  border-radius: 6px;
+  outline: none;
 }
 body.qa-resizing {
   cursor: row-resize;
