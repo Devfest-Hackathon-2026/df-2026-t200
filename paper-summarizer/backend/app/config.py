@@ -82,3 +82,11 @@ MAX_CHECKS_PER_DAY = int(os.getenv("MAX_CHECKS_PER_DAY", "30"))
 ASK_GLOBAL_PER_MIN = int(os.getenv("ASK_GLOBAL_PER_MIN", "20"))
 # 同時に受け付けるアップロード（PDF をメモリに読むので、1GiB のインスタンスが溢れないようにする）
 MAX_CONCURRENT_UPLOADS = int(os.getenv("MAX_CONCURRENT_UPLOADS", "3"))
+
+# 解析の進捗を送る SSE（GET /api/papers/{id}/events）。接続は Cloud Run のインスタンスのスレッドと接続数を使うので上限を設ける
+SSE_MAX_CONNECTIONS = int(os.getenv("SSE_MAX_CONNECTIONS", "20"))  # 同時接続の上限。超えたら 429 を返し、画面は問い合わせに戻る
+# 1本の接続の最長時間。過ぎたらサーバーが閉じ、画面が再接続する。Firebase Hosting の rewrite には約60秒の上限があると考えられるので、それより短くする
+SSE_MAX_SEC = float(os.getenv("SSE_MAX_SEC", "50"))
+SSE_TICK_SEC = float(os.getenv("SSE_TICK_SEC", "1"))  # 進捗が変わったかを見る間隔（送るのは最大でこの間隔に1回）
+SSE_RECORD_SEC = float(os.getenv("SSE_RECORD_SEC", "3"))  # 記録の status と progress を読み直す間隔（別のサーバーの解析や引き継ぎの判定）
+SSE_PING_SEC = float(os.getenv("SSE_PING_SEC", "5"))  # 何も送らない間に出すコメント行（: ping）の間隔。途中の機器に切られないため

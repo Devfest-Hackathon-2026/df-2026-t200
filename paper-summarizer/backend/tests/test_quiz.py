@@ -677,9 +677,9 @@ def test_gemini_rewrite_fences_the_paper_text_and_validates_schema(monkeypatch):
     calls = []
 
     class Models:
-        def generate_content(self, model, contents, config):
+        def generate_content_stream(self, model, contents, config):
             calls.append({"model": model, "contents": contents, "config": config})
-            return SimpleNamespace(parsed=None, text=json.dumps(_rw()))
+            return iter([SimpleNamespace(text=json.dumps(_rw()))])
 
     monkeypatch.setattr(gemini, "client", lambda: SimpleNamespace(models=Models()))
     targets = [

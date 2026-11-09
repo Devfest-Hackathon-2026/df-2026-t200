@@ -12,6 +12,7 @@ import { Step2Walkthrough, type EquationFocus } from './components/Step2Walkthro
 import { Step3Critical } from './components/Step3Critical'
 import { TabList } from './components/TabList'
 import { Upload } from './components/Upload'
+import { AnalysisProgress } from './components/AnalysisProgress'
 import { useElementWidth } from './hooks/useElementWidth'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { usePaper } from './hooks/usePaper'
@@ -217,7 +218,7 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
             </div>
           )}
           {working && (
-            <div className="banner analysis-running" role="status">
+            <div className="banner analysis-running">
               {cancelState === 'confirm' ? (
                 <>
                   <span>解析を中止しますか？作成中のStepは破棄されます。終わったStepの結果は残り、あとで続きから再開できます。</span>
@@ -232,13 +233,14 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
                 </>
               ) : (
                 <>
-                  <span>
+                  <span role="status">
                     <span className="spinner" aria-hidden="true" /> 論文を解析しています（{STATUS_PROGRESS[paper.status] ?? '準備中'}）。
                     {cancelError && <span className="small"> 中止できませんでした（{cancelError}）。</span>}
                   </span>
                   <button type="button" className="btn" onClick={() => setCancelState('confirm')} disabled={cancelState === 'sending'}>
                     {cancelState === 'sending' ? '中止しています…' : '解析を中止'}
                   </button>
+                  <AnalysisProgress progress={paper.progress} />
                 </>
               )}
             </div>

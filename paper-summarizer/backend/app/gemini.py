@@ -7,6 +7,7 @@
 import json
 import logging
 import secrets
+from collections.abc import Callable
 from typing import Any
 
 from google import genai
@@ -80,29 +81,64 @@ def _pdf_part(pdf_bytes: bytes) -> types.Part:
     return types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
 
 
-def _generate(model: str, contents: list[Any], schema: type, level: str, cli: genai.Client | None = None, lang: str = "ja") -> dict[str, Any]:
-    resp = (cli or client()).models.generate_content(
-        model=model,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM.format(level=LEVELS.get(level, LEVELS["undergrad"]), lang=LANGS.get(lang, LANGS["ja"])),
-            response_mime_type="application/json",
-            response_schema=schema,
-            temperature=0.2,
-            thinking_config=types.ThinkingConfig(thinking_level=config.THINKING_LEVEL) if config.THINKING_LEVEL else None,
-        ),
+def _stream_text(
+    cli: genai.Client, model: str, contents: list[Any], cfg: types.GenerateContentConfig, on_progress: Callable[[int], None] | None
+) -> str:
+    """ストリーミングで受け取った本文をつなげて返す。断片が届くたびに、ここまでの文字数を on_progress に伝える。
+
+    途中で切れたときの例外（API のエラーなど）はそのまま投げる。分類は errors.user_message が行う。
+    """
+    parts: list[str] = []
+    total = 0
+    for chunk in cli.models.generate_content_stream(model=model, contents=contents, config=cfg):
+        text = chunk.text
+        if not text:
+            continue
+        parts.append(text)
+        total += len(text)
+        if on_progress is not None:
+            try:
+                on_progress(total)
+            except Exception:  # noqa: BLE001
+                log.exception("progress callback failed")  # 進捗の通知の失敗で解析は止めない
+    return "".join(parts)
+
+
+def _generate(
+    model: str,
+    contents: list[Any],
+    schema: type,
+    level: str,
+    cli: genai.Client | None = None,
+    lang: str = "ja",
+    on_progress: Callable[[int], None] | None = None,
+) -> dict[str, Any]:
+    cfg = types.GenerateContentConfig(
+        system_instruction=SYSTEM.format(level=LEVELS.get(level, LEVELS["undergrad"]), lang=LANGS.get(lang, LANGS["ja"])),
+        response_mime_type="application/json",
+        response_schema=schema,
+        temperature=0.2,
+        thinking_config=types.ThinkingConfig(thinking_level=config.THINKING_LEVEL) if config.THINKING_LEVEL else None,
     )
-    if resp.parsed is not None:
-        return resp.parsed.model_dump(mode="json", by_alias=True)
-    if not (resp.text or "").strip():
+    text = _stream_text(cli or client(), model, contents, cfg, on_progress)
+    if not text.strip():
         raise EmptyResponseError(f"empty response from {model}")
+    return _validate(schema, text)
+
+
+def _validate(schema: type, text: str) -> dict[str, Any]:
+    """組み立てた本文をスキーマで検証する。付加情報（概念・先に読む論文・流れ図）だけが不正なら、その部分を外して検証し直す。"""
     try:
-        return schema.model_validate_json(resp.text).model_dump(mode="json", by_alias=True)
-    except ValidationError:
+        return schema.model_validate_json(text).model_dump(mode="json", by_alias=True)
+    except ValidationError as invalid:
+        try:
+            loaded = json.loads(text)
+        except ValueError:
+            raise invalid from None  # 途中で切れた JSON など。直せないので、そのまま「有効な応答が得られませんでした」にする
         if schema is Step1:
             # 前提知識の重要度・出どころ・根拠は付加情報。使えない項目だけ外して（既定値になる）検証し直す
             # 先に読むとよい論文（foundations）も付加情報。壊れた要素だけ外す
-            repaired = repair_step1(json.loads(resp.text))
+            repaired = repair_step1(loaded)
             repaired = repair_foundations(repaired) if repaired is not None else None
             if repaired is None:
                 raise
@@ -110,7 +146,7 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
             return schema.model_validate(repaired).model_dump(mode="json", by_alias=True)
         # 図解は付け足しなので、flow の中身が不正でも Step 2 の解説は捨てない。flow を外して検証し直す
         # 式の concepts も付加情報なので、不正ならそこだけ直してから検証し直す
-        raw = repair_equation_concepts(json.loads(resp.text))
+        raw = repair_equation_concepts(loaded)
         if schema is Step2:
             try:
                 return schema.model_validate(raw).model_dump(mode="json", by_alias=True)
@@ -122,7 +158,9 @@ def _generate(model: str, contents: list[Any], schema: type, level: str, cli: ge
         return schema.model_validate({k: v for k, v in raw.items() if k != "flow"}).model_dump(mode="json", by_alias=True)
 
 
-def step1(pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
+def step1(
+    pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client | None = None, on_progress: Callable[[int], None] | None = None
+) -> dict[str, Any]:
     prompt = """この論文について「Step 1: 前提知識マップ」を作ってください。
 - summary はちょうど3項目: 何の問題を扱うか / どう解いたか / 何が分かったか（各1〜2文）
 - concepts は、この論文を読むのに必要な前提知識。論文内で定義される新概念ではなく、読者が事前に知っておくべきもの。
@@ -141,10 +179,18 @@ def step1(pdf_bytes: bytes, level: str, *, lang: str = "ja", cli: genai.Client |
   title・authors・year は参考文献に書かれているとおりに書く（年が分からなければ null）。doi と arxiv_id は、参考文献にその記載があるときだけ書き、無ければ null にする。推測で補わない。
   reason は、対象の論文での使われ方に基づいて1〜2文で書く（一般的な評判や被引用数を理由にしない）。
   evidence には、対象の論文の本文でその論文を引用している箇所を、page と quote（一字一句そのまま）で1〜2箇所付ける。参考文献の一覧そのものではなく、本文中の引用箇所を選ぶ。"""
-    return clean_foundations(clean_concepts(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step1, level, cli, lang)))
+    return clean_foundations(clean_concepts(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step1, level, cli, lang, on_progress)))
 
 
-def step2(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
+def step2(
+    pdf_bytes: bytes,
+    level: str,
+    s1: dict[str, Any],
+    *,
+    lang: str = "ja",
+    cli: genai.Client | None = None,
+    on_progress: Callable[[int], None] | None = None,
+) -> dict[str, Any]:
     ids = [c["id"] for c in s1.get("concepts") or [] if isinstance(c, dict) and isinstance(c.get("id"), str)]
     concepts = [{"id": c["id"], "name": c.get("name")} for c in s1.get("concepts") or [] if isinstance(c, dict) and c.get("id") in ids]
     context = json.dumps(
@@ -164,11 +210,19 @@ Step 1 の結果{DOC_RULE}:
   frames は stages と同じ数で、stage_index が各段階に対応する（active_edges は "始点id->終点id"）。
   shape（テンソルの形など）は論文に書かれているときだけ書き、根拠を付ける。書かれていなければ null。
   数値のデータは入れない。ノード・コマの evidence は論文からそのまま抜き出す。"""
-    out = clean_flow(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli, lang))
+    out = clean_flow(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli, lang, on_progress))
     return clean_equation_concepts(out, set(ids))
 
 
-def step3(pdf_bytes: bytes, level: str, s1: dict[str, Any], *, lang: str = "ja", cli: genai.Client | None = None) -> dict[str, Any]:
+def step3(
+    pdf_bytes: bytes,
+    level: str,
+    s1: dict[str, Any],
+    *,
+    lang: str = "ja",
+    cli: genai.Client | None = None,
+    on_progress: Callable[[int], None] | None = None,
+) -> dict[str, Any]:
     context = json.dumps({"title": s1.get("title"), "summary": s1.get("summary")}, ensure_ascii=False)
     prompt = f"""この論文について「Step 3: 批判的思考チェック」を作ってください。
 Step 1 の結果{DOC_RULE}:
@@ -180,7 +234,7 @@ Step 1 の結果{DOC_RULE}:
   あなたの推論による指摘は origin=ai_inference とし、論文の主張であるかのように書かない。
 - alternatives: 同じ課題に対する別のアプローチ（先行研究や別の解き方）と、提案手法との比較。
 - likely_questions: 輪講・ゼミで聞かれそうな質問と、答えるためにどこを読めばよいかのヒント。"""
-    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step3, level, cli, lang)
+    return _generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step3, level, cli, lang, on_progress)
 
 
 STEP_NAMES = {1: "前提知識マップ", 2: "コアロジック＆図表連動ウォークスルー", 3: "批判的思考チェック"}

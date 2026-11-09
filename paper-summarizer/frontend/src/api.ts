@@ -83,6 +83,12 @@ export type Message = {
 
 export type Status = 'queued' | 'processing_step1' | 'processing_step2' | 'processing_step3' | 'done' | 'failed' | 'cancelled'
 
+/** 1つの Step の進み具合。elapsed（経過秒）は、そのサーバーで解析が走っているときだけ付く */
+export type StepProgress = { phase: 'reading' | 'writing' | 'verifying' | 'done'; chars: number; elapsed?: number }
+export type Progress = Partial<Record<'step1' | 'step2' | 'step3', StepProgress>>
+/** SSE で届く知らせ */
+export type ProgressEvent = { status: Status; progress: Progress | null }
+
 export type Paper = {
   id: string
   filename: string
@@ -95,6 +101,8 @@ export type Paper = {
   demo: boolean
   results: { step1?: Step1; step2?: Step2; step3?: Step3 }
   messages: Message[]
+  /** 解析中だけ入る。終わったら null */
+  progress?: Progress | null
 }
 
 /** 誤り探しの問題。回答前は id と文だけで、どれが誤りかはサーバーが返さない */
@@ -190,6 +198,8 @@ export const api = {
   health: () => fetch('/api/health').then((r) => json<Health>(r)),
   list: () => fetch('/api/papers', { headers: withClientId() }).then((r) => json<PaperSummary[]>(r)),
   get: (id: string) => fetch(`/api/papers/${id}`).then((r) => json<Paper>(r)),
+  /** 解析の進捗を送る Server-Sent Events の URL */
+  eventsUrl: (id: string) => `/api/papers/${id}/events`,
   upload: (file: File, lang: Lang = 'ja') => {
     const fd = new FormData()
     fd.append('file', file)
