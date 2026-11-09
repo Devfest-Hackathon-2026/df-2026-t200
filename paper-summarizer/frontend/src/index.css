@@ -205,6 +205,26 @@ h3 {
 .banner .spinner {
   vertical-align: -1px;
 }
+/* 解析の進み具合（Step ごとの1行）。狭い画面では折り返し、帯からはみ出さない */
+.analysis-progress {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.progress-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.progress-step {
+  overflow-wrap: anywhere;
+}
+.progress-step.phase-done {
+  color: var(--muted, #5b6472);
+}
 
 /* ---------- 板面（画面いっぱい） ---------- */
 .app {
