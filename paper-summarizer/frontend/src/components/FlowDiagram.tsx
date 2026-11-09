@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { Flow, FlowKind, FlowNode } from '../api'
 import { FLOW_EDGE_LABEL_MAX, FLOW_NODE_H, FLOW_NODE_W, edgeKey, flowEdgePath, layoutFlow } from './flowLayout'
+import { frameNotes } from './flowNotes'
 
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)'
 const KIND_LABEL: Record<FlowKind, string> = { input: '入力', process: '処理', output: '出力' }
@@ -43,6 +44,7 @@ export function FlowDiagram({
   const frame = (flow.frames ?? []).find((f) => f.stage_index === index)
   const activeNodes = new Set(frame?.active_nodes ?? [])
   const activeEdges = new Set(frame?.active_edges ?? [])
+  const notes = frameNotes(flow, frame)
 
   // ノードが多くて図が横にはみ出すとき、そのコマで強調するノードが見えるよう横にスクロールする
   const scroller = useRef<HTMLDivElement>(null)
@@ -189,6 +191,13 @@ export function FlowDiagram({
       <p className="flow-caption" aria-live="polite">
         {frame?.caption}
       </p>
+      {notes.length > 0 && (
+        <ul className="flow-notes muted small" aria-label="このコマで流れるもの">
+          {notes.map((note, i) => (
+            <li key={i}>{note}</li>
+          ))}
+        </ul>
+      )}
       <div className="row between flow-nav">
         <button type="button" className="btn" disabled={index === 0} onClick={() => step(index - 1)}>
           前へ
