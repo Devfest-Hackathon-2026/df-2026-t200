@@ -149,7 +149,10 @@ class ConceptCheckService:
                 return None
             return {**p, "check": record}
 
-        store.mutate(paper.id, put)
+        try:
+            store.mutate(paper.id, put)
+        except KeyError as e:  # 生成の途中で論文が削除された（作った問題は捨てる）
+            raise PaperNotFound(paper.id) from e
         return check.public_view(saved or record)
 
     def _generate(self, paper: Paper, src: Any, targets: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

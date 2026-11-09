@@ -19,6 +19,7 @@ from app.check_service import (
     CheckNotFound,
     CheckNotReady,
 )
+from app.errors import PaperNotFound
 from app.quota import DailyQuota
 from app.ratelimit import RateLimiter
 from app.schemas import CheckAnswer
@@ -563,3 +564,19 @@ def test_gemini_check_fences_the_paper_text_and_validates_schema(monkeypatch):
     # 正解だけが長く詳しいと、知らなくても当てられる（本番で6問中6問が「いちばん長いものが正解」だった）
     assert "文字数と詳しさをそろえる" in prompt
     assert "英語" in calls[0]["config"].system_instruction and calls[0]["model"] == config.QA_MODEL
+
+
+def test_create_is_not_found_when_the_paper_is_deleted_while_generating(tmp_path):
+    pid = _paper()
+
+    def delete_then_make(t, n):
+        store._json_path(pid).unlink(missing_ok=True)  # 生成の途中で論文が消された
+        return _default(t, n)
+
+    fake = FakeAnalyzer(delete_then_make)
+    svc = PaperService(analyzers={True: fake, False: fake}, starter=lambda _pid: None, rng=random.Random(1))
+    svc.check.quota = DailyQuota("checks", 100, directory=tmp_path)
+    svc.check.limiter = RateLimiter(100, 60)
+    with pytest.raises(PaperNotFound):
+        svc.check.create(pid, ["a", "b"])
+    assert not store._json_path(pid).exists()

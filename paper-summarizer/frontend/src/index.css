@@ -699,6 +699,41 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   flex-direction: column;
   gap: 28px;
 }
+.paper-item {
+  position: relative;
+}
+/* 削除は文字付きの小さなボタン。カード全体のボタンの中には置けないので、右上に重ねる */
+.paper-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--red);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.paper-delete:hover:not(:disabled) {
+  background: var(--red);
+  color: #fff;
+  text-decoration: none;
+}
+.paper-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.paper-item .paper-card-title {
+  padding-right: 52px;
+}
+.history-more {
+  align-self: flex-start;
+  margin: 0 6px 12px;
+}
 .paper-card {
   display: block;
   width: 100%;

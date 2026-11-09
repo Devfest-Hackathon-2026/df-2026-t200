@@ -67,6 +67,7 @@ ASK_RATE_PER_MIN = int(os.getenv("ASK_RATE_PER_MIN", "10"))
 RETRY_RATE_PER_MIN = int(os.getenv("RETRY_RATE_PER_MIN", "3"))
 QUIZ_RATE_PER_MIN = int(os.getenv("QUIZ_RATE_PER_MIN", "3"))
 CHECK_RATE_PER_MIN = int(os.getenv("CHECK_RATE_PER_MIN", "3"))
+DELETE_RATE_PER_MIN = int(os.getenv("DELETE_RATE_PER_MIN", "20"))  # 削除は持ち主（X-Client-Id）ごとに数える
 
 # サービス全体の上限（認証がないので、論文ごとの制限だけでは論文を増やして回避できる）。
 # 1日の上限は直近24時間の回数で数え、QUOTA_DIR に残す。0 にするとその操作を止められる（緊急停止）。
