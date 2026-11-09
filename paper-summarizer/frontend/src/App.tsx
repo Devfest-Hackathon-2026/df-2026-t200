@@ -39,6 +39,14 @@ const STEPS = [
 const NARROW_QUERY = '(max-width: 900px)'
 const isNarrow = () => window.matchMedia?.(NARROW_QUERY).matches ?? false
 
+/** 解析中の表示（どの Step を作っているか） */
+const STATUS_PROGRESS: Record<string, string> = {
+  queued: '開始を待っています',
+  processing_step1: 'Step 1 を作成中・1/3',
+  processing_step2: 'Step 2 を作成中・2/3',
+  processing_step3: 'Step 3 を作成中・3/3',
+}
+
 const paperIdFromHash = () => window.location.hash.match(/^#\/paper\/([0-9a-f]{16})$/)?.[1] ?? null
 
 function PaperView({ id, health }: { id: string; health: Health | null }) {
@@ -109,6 +117,22 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
     selectStep(2)
   }
 
+  const [cancelState, setCancelState] = useState<'idle' | 'confirm' | 'sending'>('idle')
+  const [cancelError, setCancelError] = useState<string | null>(null)
+  const cancel = async () => {
+    setCancelState('sending')
+    setCancelError(null)
+    try {
+      await api.cancel(id)
+    } catch (e) {
+      // 中止の前に解析が終わっていた（409）なども含め、最新の状態を取り直して表示を合わせる
+      setCancelError((e as Error).message)
+    } finally {
+      setCancelState('idle')
+      refresh()
+    }
+  }
+
   const retry = async () => {
     setRetrying(true)
     setRetryError(null)
@@ -137,7 +161,8 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
 
   const r = paper.results
   const ready = { 1: !!r.step1, 2: !!r.step2, 3: !!r.step3, 4: true } as Record<number, boolean>
-  const working = paper.status !== 'done' && paper.status !== 'failed'
+  const cancelled = paper.status === 'cancelled'
+  const working = paper.status !== 'done' && paper.status !== 'failed' && !cancelled
 
   return (
     <JumpContext.Provider value={jump}>
@@ -191,6 +216,44 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
               サーバーとの通信に失敗しました（{error}）。少し待つと自動でつなぎ直します。
             </div>
           )}
+          {working && (
+            <div className="banner analysis-running" role="status">
+              {cancelState === 'confirm' ? (
+                <>
+                  <span>解析を中止しますか？作成中のStepは破棄されます。終わったStepの結果は残り、あとで続きから再開できます。</span>
+                  <span className="banner-actions">
+                    <button type="button" className="btn danger" onClick={cancel}>
+                      中止する
+                    </button>
+                    <button type="button" className="btn" onClick={() => setCancelState('idle')}>
+                      続ける
+                    </button>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    <span className="spinner" aria-hidden="true" /> 論文を解析しています（{STATUS_PROGRESS[paper.status] ?? '準備中'}）。
+                    {cancelError && <span className="small"> 中止できませんでした（{cancelError}）。</span>}
+                  </span>
+                  <button type="button" className="btn" onClick={() => setCancelState('confirm')} disabled={cancelState === 'sending'}>
+                    {cancelState === 'sending' ? '中止しています…' : '解析を中止'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {cancelled && (
+            <div className="banner analysis-cancelled" role="status">
+              <span>
+                解析を中止しました。終わったStepの結果は表示できます。
+                {retryError && <span className="small"> 再開できませんでした（{retryError}）。時間をおいてもう一度押してください。</span>}
+              </span>
+              <button type="button" className="btn" onClick={retry} disabled={retrying}>
+                続きから再開
+              </button>
+            </div>
+          )}
           {paper.status === 'failed' && (
             <div className="error banner" role="alert">
               <span>
@@ -208,7 +271,7 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
                 (r.step1 ? (
                   <Step1Map data={r.step1} paperId={id} step2={r.step2} onOpenEquation={openEquation} focus={conceptFocus} />
                 ) : (
-                  <Pending working={working} label="前提知識マップ" />
+                  <Pending working={working} cancelled={cancelled} label="前提知識マップ" />
                 ))}
               {step === 2 &&
                 (r.step2 ? (
@@ -220,15 +283,19 @@ function PaperView({ id, health }: { id: string; health: Health | null }) {
                     focus={equationFocus}
                   />
                 ) : (
-                  <Pending working={working} label="手法の流れの解説" />
+                  <Pending working={working} cancelled={cancelled} label="手法の流れの解説" />
                 ))}
               {step === 3 &&
-                (r.step3 ? <Step3Critical data={r.step3} paperId={id} /> : <Pending working={working} label="批判的思考チェック" />)}
+                (r.step3 ? (
+                  <Step3Critical data={r.step3} paperId={id} />
+                ) : (
+                  <Pending working={working} cancelled={cancelled} label="批判的思考チェック" />
+                ))}
               {step === 4 &&
                 (paper.status === 'done' && r.step2 && r.step3 ? (
                   <QuizPanel paperId={id} pageCount={paper.page_count} draft={quizDraft} onDraftChange={setQuizDraft} />
                 ) : (
-                  <Pending working={working} label="誤り探しの元になる解説" />
+                  <Pending working={working} cancelled={cancelled} label="誤り探しの元になる解説" />
                 ))}
             </ErrorBoundary>
           </div>
@@ -253,7 +320,7 @@ function NotFound() {
   )
 }
 
-function Pending({ working, label }: { working: boolean; label: string }) {
+function Pending({ working, cancelled, label }: { working: boolean; cancelled: boolean; label: string }) {
   return (
     <div className="pending">
       {working ? (
@@ -262,7 +329,7 @@ function Pending({ working, label }: { working: boolean; label: string }) {
           <p>{label}を作成しています…</p>
         </>
       ) : (
-        <p className="muted">{label}を作成できませんでした。</p>
+        <p className="muted">{cancelled ? `解析を中止したため、${label}はまだありません。` : `${label}を作成できませんでした。`}</p>
       )}
     </div>
   )

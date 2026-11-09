@@ -132,12 +132,25 @@ def is_stale(paper: dict[str, Any]) -> bool:
     return (datetime.now(UTC) - last).total_seconds() > config.STALE_AFTER_SEC
 
 
-def retryable(paper: dict[str, Any]) -> bool:
-    """失敗した解析と、サーバー停止などで止まったままの解析（一定時間更新なし）を再実行できる。"""
+CANCELLED = "cancelled"
+
+
+def running(paper: dict[str, Any]) -> bool:
+    """解析待ち・解析中（queued / processing_*）。"""
     status = paper.get("status", "")
-    if status == "failed":
+    return status == "queued" or status.startswith("processing_")
+
+
+def not_cancelled(paper: dict[str, Any]) -> bool:
+    return paper.get("status") != CANCELLED
+
+
+def retryable(paper: dict[str, Any]) -> bool:
+    """失敗した解析・中止した解析と、サーバー停止などで止まったままの解析（一定時間更新なし）を再実行できる。"""
+    status = paper.get("status", "")
+    if status in ("failed", CANCELLED):
         return True
-    return (status == "queued" or status.startswith("processing_")) and is_stale(paper)
+    return running(paper) and is_stale(paper)
 
 
 class QuizNotReady(Exception):
@@ -301,7 +314,7 @@ class PaperService:
                 log.warning("analysis skipped: paper=%s not found", paper_id)
                 return
             paper = Paper.model_validate(raw)
-            if paper.status == "done":
+            if paper.status in ("done", CANCELLED):
                 return
             src = self.source(paper)
             analyzer = self.analyzer_for(paper)
@@ -309,19 +322,42 @@ class PaperService:
             for key in STEP_KEYS:
                 if results.get(key):
                     continue
-                store.update(paper_id, status=f"processing_{key}")
+                # 中止されていたら次の Step に進まない（状態の確認と書き込みを1回の操作で行う）
+                if store.transition(paper_id, not_cancelled, status=f"processing_{key}") is None:
+                    log.info("paper=%s cancelled before %s", paper_id, key)
+                    return
                 log.info("paper=%s %s start (demo=%s)", paper_id, key, paper.demo)
                 results[key] = finalize_step(key, _generate_step(analyzer, key, src, results), src.norm_pages)
-                store.set_result(paper_id, key, results[key])
+                # Gemini の呼び出し中に中止されていたら、その結果は保存せずに終える
+                if (
+                    store.mutate(
+                        paper_id, lambda p, k=key: None if p.get("status") == CANCELLED else {**p, "results": {**p.get("results", {}), k: results[k]}}
+                    )
+                    is None
+                ):
+                    log.info("paper=%s cancelled during %s; result discarded", paper_id, key)
+                    return
                 log.info("paper=%s %s done", paper_id, key)
-            store.update(paper_id, status="done", error=None, analysis_version=config.ANALYSIS_VERSION)
+            store.transition(paper_id, not_cancelled, status="done", error=None, analysis_version=config.ANALYSIS_VERSION)
         except Exception as e:  # noqa: BLE001
             # 画面には決まった文言だけを返し、詳細は paper_id 付きでログに残す
             log.exception("analysis failed paper=%s", paper_id)
             try:
-                store.update(paper_id, status="failed", error=errors.user_message(e))
+                # 中止したあとに失敗した場合は「中止」のままにする
+                store.transition(paper_id, not_cancelled, status="failed", error=errors.user_message(e))
             except KeyError:
                 log.warning("paper=%s disappeared during analysis", paper_id)
+
+    def cancel(self, paper_id: str) -> bool:
+        """解析待ち・解析中の論文を中止する。中止できない状態（完了・失敗・中止済み）なら False。
+
+        実行中の Gemini の呼び出しは途中で切れないので、状態だけを先に「中止」にする。
+        解析の処理は、その呼び出しが返ったところで結果を捨てて終わる。終わった Step の結果は残す。
+        """
+        if store.transition(paper_id, running, status=CANCELLED, error=None) is None:
+            return False
+        log.info("paper=%s analysis cancelled by user", paper_id)
+        return True
 
     def retry(self, paper_id: str) -> bool:
         """状態の確認と queued への変更を1回の操作で行い、二度押しで解析が2本走らないようにする。

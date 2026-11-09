@@ -81,7 +81,7 @@ export type Message = {
   created_at: string
 }
 
-export type Status = 'queued' | 'processing_step1' | 'processing_step2' | 'processing_step3' | 'done' | 'failed'
+export type Status = 'queued' | 'processing_step1' | 'processing_step2' | 'processing_step3' | 'done' | 'failed' | 'cancelled'
 
 export type Paper = {
   id: string
@@ -197,6 +197,8 @@ export const api = {
     return fetch('/api/papers', { method: 'POST', body: fd, headers: withClientId() }).then((r) => json<{ id: string; reused: boolean }>(r))
   },
   retry: (id: string) => fetch(`/api/papers/${id}/retry`, { method: 'POST' }).then((r) => json<{ ok: boolean }>(r)),
+  /** 実行中の解析を中止する。終わった Step の結果は残り、retry で続きから再開できる */
+  cancel: (id: string) => fetch(`/api/papers/${id}/cancel`, { method: 'POST' }).then((r) => json<{ ok: boolean }>(r)),
   ask: (id: string, question: string, currentStep: number) =>
     fetch(`/api/papers/${id}/ask`, {
       method: 'POST',

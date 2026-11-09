@@ -425,3 +425,28 @@ def test_reuse_does_not_cross_languages(client, sample_pdf):
     assert en["reused"] is False and en["id"] != pid
     _wait_done(client, en["id"])
     assert _upload(client, sample_pdf, lang="en").json()["reused"] is True
+
+
+def test_cancel_endpoint(client, service, sample_pdf, monkeypatch):
+    assert client.post("/api/papers/0000000000000000/cancel").status_code == 404
+    pid = _upload(client, sample_pdf).json()["id"]
+    _wait_done(client, pid)
+    res = client.post(f"/api/papers/{pid}/cancel")
+    assert res.status_code == 409  # 解析が終わった論文は中止できない
+    assert "解析中" in res.json()["detail"]
+
+    gate = threading.Event()
+    original = mock.step1
+    monkeypatch.setattr(mock, "step1", lambda *a: (gate.wait(5), original(*a))[1])
+    pid2 = _upload(client, sample_pdf, name="other.pdf", lang="en").json()["id"]
+    assert client.post(f"/api/papers/{pid2}/cancel").json() == {"ok": True}
+    gate.set()
+    end = time.time() + 5
+    while service._running and time.time() < end:  # 中止後に返った Step 1 を捨てて、解析の処理が終わるまで待つ
+        time.sleep(0.02)
+    assert not service._running
+    paper = client.get(f"/api/papers/{pid2}").json()
+    assert paper["status"] == "cancelled"
+    assert paper["results"] == {}
+    assert client.post(f"/api/papers/{pid2}/cancel").status_code == 409  # 二度押しは 409
+    assert client.post(f"/api/papers/{pid2}/retry").json() == {"ok": True}  # 中止した解析はやり直せる

@@ -4,7 +4,7 @@ import { api, ApiError, type Paper } from '../api'
 export const POLL_MS = 1500
 export const MAX_BACKOFF_MS = 30_000
 
-const isFinished = (p: Paper) => p.status === 'done' || p.status === 'failed'
+const isFinished = (p: Paper) => p.status === 'done' || p.status === 'failed' || p.status === 'cancelled'
 
 export type PaperState = {
   paper: Paper | null
