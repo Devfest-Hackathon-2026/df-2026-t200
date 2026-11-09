@@ -1494,10 +1494,12 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   display: flex;
   flex-direction: column;
 }
-/* 開いても右ペインの3割まで（Step の解説が半分以上の高さを保つ） */
+/* 開いたときの高さは QaPanel が style で決める（取っ手で変えられる）。
+   範囲（最小120px・画面の75%・解説に最低180px を残す）も QaPanel 側で計算する */
 .qa.open {
-  height: 30%;
-  min-height: 200px;
+  position: relative;
+  flex: none;
+  min-height: 120px;
   border-top: none;
   box-shadow: 0 -2px 5px rgba(36, 40, 44, 0.18);
 }
@@ -1510,6 +1512,74 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   background-image: radial-gradient(circle, var(--board) 3.5px, transparent 4px);
   background-size: 36px 14px;
   background-position: center;
+}
+/* 欄の上の縁の取っ手。つかんで上下に動かす（タッチでも動くよう、ブラウザの縦スクロールは止める）。
+   リングの穴の帯（.qa.open::before）には重ねず、その上の16pxを当たり判定にする。
+   ふだんは薄い1pxの線と薄い灰色のつまみだけ（帯の4px上に浮かせて、中心を線に合わせる）で、重ねたとき・ドラッグ中・フォーカス時に青く濃くする */
+.qa-resizer {
+  position: absolute;
+  z-index: 2;
+  top: -16px;
+  left: 0;
+  right: 0;
+  height: 16px;
+  cursor: row-resize;
+  touch-action: none;
+}
+.qa-resizer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 5px;
+  height: 1px;
+  background: var(--line);
+}
+.qa-resizer::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: #aeb4ba;
+}
+.qa-resizer:hover::before,
+.qa-resizer:focus-visible::before,
+body.qa-resizing .qa-resizer::before,
+.qa-resizer:hover::after,
+.qa-resizer:focus-visible::after,
+body.qa-resizing .qa-resizer::after {
+  background: var(--blue);
+}
+/* キーボードでフォーカスしたときだけ、つまみを太くして周りに枠を出す（マウスでは出ない） */
+.qa-resizer:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.qa-resizer:focus-visible::after {
+  width: 56px;
+  height: 6px;
+  margin-left: -28px;
+  bottom: 2px;
+  border-radius: 3px;
+}
+/* 指で触る画面では、見た目はそのまま当たり判定だけ上へ広げて32pxにする（線とつまみは下端から測る） */
+@media (pointer: coarse) {
+  .qa-resizer {
+    top: -32px;
+    height: 32px;
+  }
+}
+body.qa-resizing {
+  cursor: row-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+body.qa-resizing .qa-body {
+  overflow: hidden;
 }
 .qa-bar {
   display: flex;
@@ -1787,13 +1857,6 @@ body.pane-resizing .workspace > :not(.pane-divider) {
   }
   .qa-head {
     padding: 6px 12px;
-  }
-  /* 開いても画面の高さの4割まで。中身は Q&A の中でスクロールする */
-  .qa.open {
-    height: 34%;
-    min-height: 160px;
-    max-height: 40vh;
-    max-height: 40dvh;
   }
   .qa-input {
     padding: 8px 12px 10px;
@@ -2150,13 +2213,75 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 
 /* 確認モード（前提知識の仕分け） */
 .concept-check {
+  /* 余白は他の .sheet（.concept-detail）と同じ左右16px */
+  margin: 12px 0;
+  padding: 0 16px 10px;
+  min-width: 0;
+}
+.check-body {
   display: grid;
   gap: 8px;
-  margin: 12px 0;
-  min-width: 0;
+  padding-top: 4px;
+}
+.check-summary,
+.check-row-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+}
+.check-summary::-webkit-details-marker,
+.check-row-summary::-webkit-details-marker {
+  display: none;
+}
+/* 開閉の三角。開くと下を向く */
+.check-summary::before,
+.check-row-summary::before {
+  content: '';
+  flex: none;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 6px 0 6px 9px;
+  border-color: transparent transparent transparent var(--ink-2);
+  transition: transform 0.12s;
+}
+details[open] > .check-summary::before,
+details[open] > .check-row-summary::before {
+  transform: rotate(90deg);
+}
+.check-summary:focus-visible,
+.check-row-summary:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 1px;
+  border-radius: 4px;
 }
 .concept-check h3 {
   margin: 0;
+}
+.check-row-summary {
+  min-height: 40px;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.check-outcome {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.check-row.ok .check-outcome {
+  color: var(--blue-dark);
+}
+.check-row.ng .check-outcome {
+  color: #b3261e;
+}
+@media (prefers-reduced-motion: reduce) {
+  .check-summary::before,
+  .check-row-summary::before {
+    transition: none;
+  }
 }
 .check-notice {
   margin: 0;
@@ -2171,7 +2296,7 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 .check-row {
   border: 1px solid #d5d8db;
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 0 12px 8px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -2187,7 +2312,7 @@ body.pane-resizing .workspace > :not(.pane-divider) {
 .check-fieldset {
   border: 0;
   margin: 0;
-  padding: 0;
+  padding: 8px 0 0;
   min-width: 0;
 }
 .check-fieldset legend {
