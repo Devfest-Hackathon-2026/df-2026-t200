@@ -244,6 +244,32 @@ describe('ConceptCheck の開け閉め', () => {
     expect(localStorage.getItem('checkOpen:other')).toBeNull()
   })
 
+  it('stays open after the answers are checked, even if it was open only because of the draft', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: view })
+    vi.spyOn(api, 'answerCheck').mockResolvedValue({ check: done })
+    localStorage.setItem('checkDraft:pid', JSON.stringify({ checkId: 'ck1', choices: { q1: 0 } }))
+    const { unmount } = render(
+      <JumpContext.Provider value={vi.fn()}>
+        <ConceptCheck paperId="pid" concepts={step1.concepts} targets={[dot, expectation]} onJudge={vi.fn()} />
+      </JumpContext.Provider>,
+    )
+    await screen.findByText('内積の使いどころはどれか。')
+    expect(sheet()).toHaveAttribute('open')
+    await userEvent.click(screen.getAllByRole('radio', { name: '分からない' })[1])
+    await userEvent.click(screen.getByRole('button', { name: '答え合わせ' }))
+    await screen.findByText('内積は類似度の計算に使う。')
+    expect(sheet()).toHaveAttribute('open')
+    unmount() // 保存は少し遅れて書かれるので、閉じて書き出させる
+    expect(JSON.parse(localStorage.getItem('checkOpen:pid') ?? 'null')).toBe('open')
+  })
+
+  it('does not put a redundant aria-label on the details (the heading names it)', async () => {
+    vi.spyOn(api, 'getCheck').mockResolvedValue({ check: null })
+    renderCheck()
+    await screen.findByRole('button', { name: '問題に答えて仕分ける' })
+    expect(sheet()).not.toHaveAttribute('aria-label')
+  })
+
   it('still works when localStorage throws', async () => {
     vi.spyOn(api, 'getCheck').mockResolvedValue({ check: null })
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {

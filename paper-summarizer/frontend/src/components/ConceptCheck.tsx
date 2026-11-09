@@ -101,6 +101,7 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
         answered.current = true
         if (next.result) onJudge(next.result.verdicts)
         setDraft(EMPTY_CHECK_DRAFT)
+        setPref('open') // 下書きだけで開いていた場合、下書きが空になっても結果を閉じない
       },
     )
   }
@@ -241,7 +242,6 @@ export function ConceptCheck({ paperId, concepts, targets, onJudge }: Props) {
   return (
     <details
       className="concept-check sheet"
-      aria-label="確認モード"
       open={isOpen}
       onToggle={(e) => {
         // 開閉の状態を React が変えたときにも toggle は届く。人が操作して食い違ったときだけ覚える

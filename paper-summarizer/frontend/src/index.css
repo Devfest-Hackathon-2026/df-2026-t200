@@ -1554,8 +1554,24 @@ body.qa-resizing .qa-resizer::before,
 body.qa-resizing .qa-resizer::after {
   background: var(--blue);
 }
+/* キーボードでフォーカスしたときだけ、つまみを太くして周りに枠を出す（マウスでは出ない） */
 .qa-resizer:focus-visible {
-  outline: none;
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.qa-resizer:focus-visible::after {
+  width: 56px;
+  height: 6px;
+  margin-left: -28px;
+  bottom: 2px;
+  border-radius: 3px;
+}
+/* 指で触る画面では、見た目はそのまま当たり判定だけ上へ広げて32pxにする（線とつまみは下端から測る） */
+@media (pointer: coarse) {
+  .qa-resizer {
+    top: -32px;
+    height: 32px;
+  }
 }
 body.qa-resizing {
   cursor: row-resize;

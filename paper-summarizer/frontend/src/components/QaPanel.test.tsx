@@ -184,6 +184,17 @@ describe('QaPanel', () => {
       expect(document.body).not.toHaveClass('qa-resizing')
     })
 
+    it('ends the drag cleanly even when releasing the pointer capture throws', async () => {
+      await open()
+      const el = handle()
+      el.releasePointerCapture = () => {
+        throw new DOMException('no capture', 'NotFoundError')
+      }
+      fireEvent.pointerDown(el, { clientY: 500, pointerId: 1, button: 0 })
+      expect(() => fireEvent.pointerCancel(el, { pointerId: 1 })).not.toThrow()
+      expect(document.body).not.toHaveClass('qa-resizing')
+    })
+
     it('goes back to the default height on double click', async () => {
       await open()
       const start = now()

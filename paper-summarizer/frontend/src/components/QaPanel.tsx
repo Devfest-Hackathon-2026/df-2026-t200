@@ -74,7 +74,11 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
     if (drag.current?.pointerId !== e.pointerId) return
     drag.current = null
     document.body.classList.remove('qa-resizing')
-    e.currentTarget.releasePointerCapture?.(e.pointerId)
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId)
+    } catch {
+      /* すでに捕まえていない（pointercancel など）。放す必要はない */
+    }
   }
   // 取っ手は欄の上の縁にあるので、上へ動かすほど高くなる
   const onHandleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
