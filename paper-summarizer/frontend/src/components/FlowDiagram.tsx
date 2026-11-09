@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { Flow, FlowKind, FlowNode } from '../api'
 import { FLOW_EDGE_LABEL_MAX, FLOW_NODE_H, FLOW_NODE_W, edgeKey, flowEdgePath, layoutFlow } from './flowLayout'
-import { frameNotes } from './flowNotes'
+import { FLOW_NOTES_MAX, frameNotes } from './flowNotes'
 
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)'
 const KIND_LABEL: Record<FlowKind, string> = { input: '入力', process: '処理', output: '出力' }
@@ -193,9 +193,10 @@ export function FlowDiagram({
       </p>
       {notes.length > 0 && (
         <ul className="flow-notes muted small" aria-label="このコマで流れるもの">
-          {notes.map((note, i) => (
+          {notes.slice(0, FLOW_NOTES_MAX).map((note, i) => (
             <li key={i}>{note}</li>
           ))}
+          {notes.length > FLOW_NOTES_MAX && <li>ほか {notes.length - FLOW_NOTES_MAX} 件</li>}
         </ul>
       )}
       <div className="row between flow-nav">

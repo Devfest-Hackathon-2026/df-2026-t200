@@ -26,14 +26,15 @@ describe('frameNotes', () => {
     expect(frameNotes(flow, undefined)).toEqual([])
   })
 
-  it('ignores edges whose nodes are missing and caps the number of notes', () => {
+  it('ignores edges whose nodes are missing and returns every remaining note', () => {
     const many: Flow = {
       nodes: [node('x'), node('y')],
       edges: [{ from: 'x', to: 'ghost', label: 'z' }, ...Array.from({ length: 5 }, () => ({ from: 'x', to: 'y', label: 'v' }))],
       frames: [],
     }
     const notes = frameNotes(many, frame(['x->ghost', 'x->y']))
-    expect(notes).toHaveLength(FLOW_NOTES_MAX)
+    expect(notes).toHaveLength(5)
+    expect(notes.length).toBeGreaterThan(FLOW_NOTES_MAX)
     expect(notes.every((n) => n === 'X → Y：v')).toBe(true)
   })
 })

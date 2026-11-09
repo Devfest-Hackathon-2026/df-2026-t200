@@ -6,6 +6,7 @@ export const FLOW_NOTES_MAX = 3
 /**
  * コマごとの注記。そのコマで流れる矢印について「何が流れるか」と「形がどう変わるか」を
  * 既存のデータ（辺のラベル、ノードの shape）だけから作る。どちらも無い矢印は出さない。
+ * 画面に出すのは先頭の FLOW_NOTES_MAX 件で、残りは件数だけ示す。
  */
 export function frameNotes(flow: Flow, frame: FlowFrame | undefined): string[] {
   if (!frame) return []
@@ -13,7 +14,6 @@ export function frameNotes(flow: Flow, frame: FlowFrame | undefined): string[] {
   const byId = new Map((flow.nodes ?? []).map((n) => [n.id, n]))
   const notes: string[] = []
   for (const e of flow.edges ?? []) {
-    if (notes.length >= FLOW_NOTES_MAX) break
     if (!active.has(edgeKey(e))) continue
     const from = byId.get(e.from)
     const to = byId.get(e.to)
