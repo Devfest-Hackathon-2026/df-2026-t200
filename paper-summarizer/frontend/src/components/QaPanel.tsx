@@ -1,14 +1,18 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { api, type Message } from '../api'
+import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import { EvidenceList } from '../jump'
 import { scrollWithin } from '../motion'
 import { renderInline } from './inlineMarkdown'
+import { clampQaHeight, defaultQaHeight, isQaHeight, qaBounds } from './qaHeight'
 
 const SOURCE_LABEL: Record<string, { text: string; cls: string }> = {
   paper: { text: '論文に記載', cls: 'paper' },
   general_knowledge: { text: '論文外の一般知識', cls: 'general' },
   not_in_paper: { text: '論文に記載なし', cls: 'none' },
 }
+const KEY_STEP = 16
+const KEY_BIG_STEP = 64
 const SUGGESTIONS = ['この手法の弱点は？', '先行研究との一番の違いは？', 'この実験設定で主張は十分に支えられている？']
 
 export function QaPanel({ paperId, initial, currentStep }: { paperId: string; initial: Message[]; currentStep: number }) {
@@ -21,6 +25,12 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
   // 読み上げ用の状態（パネルを閉じていても伝わるよう、常に置いておく）
   const [status, setStatus] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  // 欄の高さ（px）。null は覚えていない状態で、そのときは既定の高さを使う
+  const [saved, setSaved] = useLocalStorageState<number | null>('qa-height', null, isQaHeight)
+  // 範囲を決める画面と右ペインの高さ。開いたとき・大きさが変わったときに測り直す
+  const [size, setSize] = useState({ viewport: window.innerHeight, pane: 0, chrome: 0 })
+  const drag = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null)
   const uid = useId()
   const bodyId = `${uid}-body`
   const inputId = `${uid}-input`
@@ -28,6 +38,61 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
   useEffect(() => {
     if (endRef.current) scrollWithin(endRef.current, 'end')
   }, [messages, busy, open])
+
+  useEffect(() => {
+    const pane = rootRef.current?.parentElement
+    const step = pane?.querySelector<HTMLElement>(':scope > .step-scroll')
+    const measure = () => {
+      const paneHeight = pane?.clientHeight ?? 0
+      // 解説と Q&A 以外（タブや帯）が使っている高さ。Q&A を広げても解説に高さを残すために引く
+      const chrome = pane && step ? Math.max(0, paneHeight - step.offsetHeight - (rootRef.current?.offsetHeight ?? 0)) : 0
+      setSize((prev) =>
+        prev.viewport === window.innerHeight && prev.pane === paneHeight && prev.chrome === chrome
+          ? prev
+          : { viewport: window.innerHeight, pane: paneHeight, chrome },
+      )
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    if (!pane || typeof ResizeObserver === 'undefined') return () => window.removeEventListener('resize', measure)
+    const ro = new ResizeObserver(measure)
+    ro.observe(pane)
+    if (step) ro.observe(step)
+    return () => {
+      window.removeEventListener('resize', measure)
+      ro.disconnect()
+    }
+  }, [open])
+
+  // ドラッグ中に閉じたり画面が切り替わったりしても、ドラッグ用の body のクラスを残さない
+  useEffect(() => () => document.body.classList.remove('qa-resizing'), [open])
+
+  const bounds = qaBounds(size.viewport, size.pane, size.chrome)
+  const height = clampQaHeight(saved ?? defaultQaHeight(size.pane > 0 ? size.pane : size.viewport, bounds), bounds)
+
+  const endDrag = (e: PointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId !== e.pointerId) return
+    drag.current = null
+    document.body.classList.remove('qa-resizing')
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId)
+    } catch {
+      /* すでに捕まえていない（pointercancel など）。放す必要はない */
+    }
+  }
+  // 取っ手は欄の上の縁にあるので、上へ動かすほど高くなる
+  const onHandleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? KEY_BIG_STEP : KEY_STEP
+    const next: Record<string, number> = {
+      ArrowUp: height + step,
+      ArrowDown: height - step,
+      Home: bounds.min,
+      End: bounds.max,
+    }
+    if (!(e.key in next)) return
+    e.preventDefault()
+    setSaved(clampQaHeight(next[e.key], bounds))
+  }
 
   // 狭い画面で PDF を見ている間に回答が届いた場合は、解説に戻って Q&A が見えたときに最新の回答までスクロールする
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -87,7 +152,38 @@ export function QaPanel({ paperId, initial, currentStep }: { paperId: string; in
   )
 
   return (
-    <div className={`qa ${open ? 'open' : ''}`}>
+    <div ref={rootRef} className={`qa ${open ? 'open' : ''}`} style={open ? { height } : undefined}>
+      {open && (
+        <div
+          className="qa-resizer"
+          role="separator"
+          aria-label="質問と回答の欄の高さ"
+          aria-orientation="horizontal"
+          aria-controls={bodyId}
+          aria-valuenow={height}
+          aria-valuemin={bounds.min}
+          aria-valuemax={bounds.max}
+          aria-valuetext={`${height}ピクセル`}
+          tabIndex={0}
+          title="ドラッグで高さを変更（ダブルクリックで元の高さに戻す）"
+          onKeyDown={onHandleKeyDown}
+          onDoubleClick={() => setSaved(null)}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return
+            e.preventDefault()
+            drag.current = { pointerId: e.pointerId, startY: e.clientY, startHeight: height }
+            e.currentTarget.setPointerCapture?.(e.pointerId)
+            document.body.classList.add('qa-resizing')
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current
+            if (d?.pointerId === e.pointerId) setSaved(clampQaHeight(d.startHeight + (d.startY - e.clientY), bounds))
+          }}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onLostPointerCapture={endDrag}
+        />
+      )}
       <div className="sr-only" role="status">
         {status}
       </div>

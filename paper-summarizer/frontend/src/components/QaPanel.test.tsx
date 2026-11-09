@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { api } from '../api'
@@ -105,5 +105,131 @@ describe('QaPanel', () => {
     expect(el.querySelector('code')).toHaveTextContent('softmax')
     expect(el.querySelector('img')).toBeNull()
     expect(el).toHaveTextContent('重要 と softmax <img src=x onerror=alert(1)> **閉じない')
+  })
+
+  describe('高さを変える取っ手', () => {
+    const open = async (paneHeight = 0) => {
+      const view = render(<QaPanel paperId="pid" initial={[answer]} currentStep={1} />)
+      if (paneHeight) Object.defineProperty(view.container, 'clientHeight', { value: paneHeight, configurable: true })
+      await userEvent.click(screen.getByRole('button', { name: /質問と回答/ }))
+      return view
+    }
+    const handle = () => screen.getByRole('separator', { name: '質問と回答の欄の高さ' })
+    const now = () => Number(handle().getAttribute('aria-valuenow'))
+    const maxH = () => Math.floor(window.innerHeight * 0.75)
+
+    it('is not shown while the panel is closed', () => {
+      render(<QaPanel paperId="pid" initial={[answer]} currentStep={1} />)
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument()
+    })
+
+    it('is a focusable horizontal separator that announces its value and range', async () => {
+      await open()
+      expect(handle()).toHaveAttribute('aria-orientation', 'horizontal')
+      expect(handle()).toHaveAttribute('tabindex', '0')
+      expect(handle()).toHaveAttribute('aria-valuemin', '120')
+      expect(Number(handle().getAttribute('aria-valuemax'))).toBe(maxH())
+      expect(now()).toBeGreaterThanOrEqual(120)
+      expect(handle()).toHaveAttribute('aria-controls')
+    })
+
+    it('grows with the up key and shrinks with the down key, with bigger steps for Shift', async () => {
+      const { container } = await open()
+      const start = now()
+      fireEvent.keyDown(handle(), { key: 'ArrowUp' })
+      expect(now()).toBe(start + 16)
+      expect(container.querySelector<HTMLElement>('.qa')!.style.height).toBe(`${start + 16}px`)
+      fireEvent.keyDown(handle(), { key: 'ArrowDown', shiftKey: true })
+      expect(now()).toBe(start + 16 - 64)
+      fireEvent.keyDown(handle(), { key: 'a' })
+      expect(now()).toBe(start + 16 - 64)
+    })
+
+    it('stops at the minimum and the maximum', async () => {
+      await open()
+      fireEvent.keyDown(handle(), { key: 'Home' })
+      expect(now()).toBe(120)
+      fireEvent.keyDown(handle(), { key: 'ArrowDown' })
+      expect(now()).toBe(120)
+      fireEvent.keyDown(handle(), { key: 'End' })
+      expect(now()).toBe(maxH())
+      fireEvent.keyDown(handle(), { key: 'ArrowUp', shiftKey: true })
+      expect(now()).toBe(maxH())
+    })
+
+    it('keeps room for the explanation above, based on the pane height', async () => {
+      await open(500)
+      expect(handle()).toHaveAttribute('aria-valuemax', '320')
+    })
+
+    it('follows the pointer while dragging up and down, and cleans up after', async () => {
+      await open()
+      const start = now()
+      fireEvent.pointerDown(handle(), { clientY: 500, pointerId: 1, button: 0 })
+      expect(document.body).toHaveClass('qa-resizing')
+      fireEvent.pointerMove(handle(), { clientY: 450, pointerId: 1 })
+      expect(now()).toBe(start + 50)
+      fireEvent.pointerMove(handle(), { clientY: 520, pointerId: 2 }) // 別の指は無視
+      expect(now()).toBe(start + 50)
+      fireEvent.pointerUp(handle(), { pointerId: 1 })
+      expect(document.body).not.toHaveClass('qa-resizing')
+      fireEvent.pointerMove(handle(), { clientY: 100, pointerId: 1 })
+      expect(now()).toBe(start + 50)
+    })
+
+    it('removes the dragging class when it unmounts in the middle of a drag', async () => {
+      const { unmount } = await open()
+      fireEvent.pointerDown(handle(), { clientY: 500, pointerId: 1, button: 0 })
+      unmount()
+      expect(document.body).not.toHaveClass('qa-resizing')
+    })
+
+    it('ends the drag cleanly even when releasing the pointer capture throws', async () => {
+      await open()
+      const el = handle()
+      el.releasePointerCapture = () => {
+        throw new DOMException('no capture', 'NotFoundError')
+      }
+      fireEvent.pointerDown(el, { clientY: 500, pointerId: 1, button: 0 })
+      expect(() => fireEvent.pointerCancel(el, { pointerId: 1 })).not.toThrow()
+      expect(document.body).not.toHaveClass('qa-resizing')
+    })
+
+    it('goes back to the default height on double click', async () => {
+      await open()
+      const start = now()
+      fireEvent.keyDown(handle(), { key: 'ArrowUp', shiftKey: true })
+      expect(now()).not.toBe(start)
+      fireEvent.doubleClick(handle())
+      expect(now()).toBe(start)
+    })
+
+    it('remembers the height and uses it the next time', async () => {
+      const first = await open()
+      fireEvent.keyDown(handle(), { key: 'ArrowUp', shiftKey: true })
+      const changed = now()
+      first.unmount()
+      expect(JSON.parse(localStorage.getItem('qa-height') ?? 'null')).toBe(changed)
+      await open()
+      expect(now()).toBe(changed)
+    })
+
+    it('ignores a broken saved value and works without localStorage', async () => {
+      localStorage.setItem('qa-height', JSON.stringify('tall'))
+      await open()
+      expect(now()).toBeGreaterThanOrEqual(120)
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      const before = now()
+      fireEvent.keyDown(handle(), { key: 'ArrowUp' })
+      expect(now()).toBe(before + 16)
+    })
+
+    it('disappears with the panel when it is closed again', async () => {
+      await open()
+      await userEvent.click(screen.getByRole('button', { name: /質問と回答/ }))
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument()
+    })
   })
 })

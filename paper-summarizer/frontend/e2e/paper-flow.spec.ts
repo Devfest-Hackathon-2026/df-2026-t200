@@ -33,7 +33,7 @@ test('upload a paper and read it through Step 1-3 and Q&A', async ({ page }) => 
   await flowGroup.focus()
   await page.keyboard.press('ArrowRight')
   await expect(page.getByRole('heading', { name: /^2\. / })).toBeVisible()
-  await expect(flowGroup.locator('.flow-edge.active')).toHaveCount(1)
+  await expect(flowGroup.locator('.flow-edge.active')).toHaveCount(4)
   await expect(page.locator('.textLayer .hl').first()).toBeVisible({ timeout: 20_000 })
 
   // Step 3: 自分の考えを書いてから解説を開く

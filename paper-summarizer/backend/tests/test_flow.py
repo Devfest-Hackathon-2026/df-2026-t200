@@ -176,3 +176,68 @@ def test_verify_all_covers_node_and_frame_evidence():
     assert out["flow"]["nodes"][0]["evidence"][0]["verified"] is False
     assert all(e["verified"] is True for n in out["flow"]["nodes"][1:] for e in n["evidence"])
     assert all("verified" in e for fr in out["flow"]["frames"] for e in fr["evidence"])
+
+
+# ---------- 段階（group） ----------
+
+
+def _grouped(groups):
+    f = _flow()
+    for n, g in zip(f["nodes"], groups, strict=True):
+        n["group"] = g
+    return f
+
+
+def test_group_is_trimmed_collapsed_and_capped_in_length():
+    f = _grouped(["  事前   学習 ", "x" * 50, "微調整"])
+    out = flow_mod.clean_flow(_s2(f))["flow"]
+    assert [n["group"] for n in out["nodes"]] == ["事前 学習", "x" * flow_mod.MAX_GROUP_LEN, "微調整"]
+
+
+@pytest.mark.parametrize("bad", ["", "   ", None, 3, ["a"], {"k": 1}, True])
+def test_unusable_group_becomes_none_without_dropping_the_flow(bad):
+    out = flow_mod.clean_flow(_s2(_grouped([bad, "A", "A"])))["flow"]
+    assert out["nodes"][0]["group"] is None
+    assert [n["group"] for n in out["nodes"][1:]] == ["A", "A"]
+
+
+def test_group_kinds_are_capped_keeping_the_first_ones():
+    f = {
+        "nodes": [{**_node(f"n{k}"), "group": f"g{k}"} for k in range(6)],
+        "edges": [{"from": "n0", "to": "n1", "label": ""}],
+        "frames": [{"stage_index": 0, "active_nodes": [], "active_edges": [], "caption": "", "evidence": []}],
+    }
+    out = flow_mod.clean_flow(_s2(f))["flow"]
+    groups = [n["group"] for n in out["nodes"]]
+    assert groups == ["g0", "g1", "g2", "g3", None, None] and flow_mod.MAX_GROUPS == 4
+
+
+def test_old_flow_without_group_is_unchanged():
+    out = flow_mod.clean_flow(_s2(_flow()))["flow"]
+    assert all("group" not in n for n in out["nodes"])
+
+
+def test_clean_flow_does_not_mutate_group_input():
+    f = _grouped(["  A ", "A", "B"])
+    before = copy.deepcopy(f)
+    flow_mod.clean_flow(_s2(f))
+    assert f == before
+
+
+def test_repair_flow_groups_fixes_only_group_fields():
+    raw = _s2(_grouped([["x"], 5, "ok"]))
+    fixed = flow_mod.repair_flow_groups(raw)
+    assert [n.get("group") for n in fixed["flow"]["nodes"]] == [None, None, "ok"]
+    assert raw["flow"]["nodes"][0]["group"] == ["x"]  # 元は変えない
+    assert flow_mod.repair_flow_groups({"flow": None}) == {"flow": None}
+    assert flow_mod.repair_flow_groups("x") == "x"
+
+
+def test_mock_flow_has_groups_and_a_branch_and_merge():
+    s2 = Step2.model_validate(mock.step2(PAGES)).model_dump(by_alias=True)
+    nodes, edges = s2["flow"]["nodes"], s2["flow"]["edges"]
+    assert len({n["group"] for n in nodes if n["group"]}) >= 2
+    out_deg = {n["id"]: sum(e["from"] == n["id"] for e in edges) for n in nodes}
+    in_deg = {n["id"]: sum(e["to"] == n["id"] for e in edges) for n in nodes}
+    assert max(out_deg.values()) >= 2 and max(in_deg.values()) >= 2
+    assert flow_mod.clean_flow(s2)["flow"] is not None

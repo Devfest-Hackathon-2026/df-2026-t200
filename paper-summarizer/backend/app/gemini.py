@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from . import config
 from .concepts import clean_concepts, clean_equation_concepts, repair_equation_concepts, repair_step1
 from .errors import EmptyResponseError
-from .flow import clean_flow
+from .flow import clean_flow, repair_flow_groups
 from .foundations import clean_foundations, repair_foundations
 from .schemas import Answer, CheckQuestions, QuizRewrites, Step1, Step2, Step3
 
@@ -146,7 +146,7 @@ def _validate(schema: type, text: str) -> dict[str, Any]:
             return schema.model_validate(repaired).model_dump(mode="json", by_alias=True)
         # 図解は付け足しなので、flow の中身が不正でも Step 2 の解説は捨てない。flow を外して検証し直す
         # 式の concepts も付加情報なので、不正ならそこだけ直してから検証し直す
-        raw = repair_equation_concepts(loaded)
+        raw = repair_flow_groups(repair_equation_concepts(loaded))
         if schema is Step2:
             try:
                 return schema.model_validate(raw).model_dump(mode="json", by_alias=True)
@@ -165,6 +165,10 @@ def step1(
 - summary はちょうど3項目: 何の問題を扱うか / どう解いたか / 何が分かったか（各1〜2文）
 - concepts は、この論文を読むのに必要な前提知識。論文内で定義される新概念ではなく、読者が事前に知っておくべきもの。
   depends_on で「AはBを知らないと分からない」という依存関係を表す（循環させない）。
+- 依存の付け方:
+  - どの概念とも依存でつながらない概念を作らない。論文に固有の概念から、基礎の概念まで depends_on をたどれるようにする。
+  - 基礎（数学・統計）→ 機械学習の一般的な概念 → 論文に固有の概念、の順に段が分かれるようにする。基礎的な概念は、それを前提にする側の概念の depends_on に挙げる。
+  - depends_on には、その概念を理解するのに先に知っておくべきものだけを挙げる。単に関連がある、同じ話題である、というだけの概念は挙げない。
 - 各概念に importance を付ける。essential=これが分からないと論文の主張が追えない / recommended=分かると理解が深まる / advanced=発展的で飛ばしてもよい。
   essential は全体の半分以下にする（全部を同じ重さにしない）。
 - 各概念に category（math / algorithm / concept / tool のいずれか）を付ける。
@@ -209,7 +213,13 @@ Step 1 の結果{DOC_RULE}:
 - flow に手法の流れ図のデータを入れる。ノードは 3〜8 個（kind は input / process / output）、edges は循環させない。
   frames は stages と同じ数で、stage_index が各段階に対応する（active_edges は "始点id->終点id"）。
   shape（テンソルの形など）は論文に書かれているときだけ書き、根拠を付ける。書かれていなければ null。
-  数値のデータは入れない。ノード・コマの evidence は論文からそのまま抜き出す。"""
+  数値のデータは入れない。ノード・コマの evidence は論文からそのまま抜き出す。
+- 論文にある分岐・合流・並行する経路は、そのまま edges で表す。一直線に並べ替えない。
+  例: LoRA の、固定した重み W0 と低ランクの差分 BA が同じ入力から分かれ、足し合わされて1つの出力に戻る形。
+  Transformer のエンコーダとデコーダ。残差接続（ブロックの入力が、処理を飛ばして出力側に合流する経路）。
+  1つのノードから複数の edges が出てよく、複数の edges が1つのノードに入ってよい。
+- 学習と推論、事前学習と微調整のように、段階が分かれる手法は、各ノードの group に段階の名前を入れる（例: 事前学習 / 微調整 / 推論）。
+  group は短い名前（20字まで）で、種類は4つまで。段階が分かれない手法では、すべてのノードの group を null にする。"""
     out = clean_flow(_generate(config.ANALYSIS_MODEL, [_pdf_part(pdf_bytes), prompt], Step2, level, cli, lang, on_progress))
     return clean_equation_concepts(out, set(ids))
 

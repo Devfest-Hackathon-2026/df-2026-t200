@@ -198,3 +198,46 @@ def test_step1_applies_the_two_step_limit(fake):
     ]
     fake(s1)
     assert _ids(gemini.step1(b"%PDF", "undergrad")) == ["p", "x1", "x2"]
+
+
+# ---------- 孤立と深さの計測 ----------
+
+
+def test_concept_stats_counts_isolated_and_max_depth():
+    from app.concepts import concept_stats
+
+    concepts = [
+        _c("a", "paper", ["b"]),
+        _c("b", "paper", ["c"]),
+        _c("c", "ai_inference"),
+        _c("lonely", "paper"),
+        _c("selfdep", "paper", ["selfdep", "ghost"]),  # 自分と存在しない概念への依存は数えない
+    ]
+    assert concept_stats(concepts) == {"concepts": 5, "edges": 2, "isolated": 2, "max_depth": 2}
+
+
+def test_concept_stats_handles_cycles_and_empty():
+    from app.concepts import concept_stats
+
+    assert concept_stats([]) == {"concepts": 0, "edges": 0, "isolated": 0, "max_depth": 0}
+    cyc = [_c("a", "paper", ["b"]), _c("b", "paper", ["a"])]
+    assert concept_stats(cyc)["isolated"] == 0
+
+
+def test_clean_concepts_logs_stats_without_removing_isolated(caplog):
+    s1 = {"concepts": [_c("a", "paper", ["b"]), _c("b", "paper"), _c("lonely", "paper")]}
+    with caplog.at_level("INFO", logger="paper"):
+        out = clean_concepts(s1)
+    assert _ids(out) == ["a", "b", "lonely"]
+    assert any("isolated=1" in r.getMessage() and "max_depth=1" in r.getMessage() for r in caplog.records)
+
+
+def test_a_failure_in_the_stats_log_does_not_fail_step1(monkeypatch):
+    from app import concepts
+
+    def boom(_):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(concepts, "concept_stats", boom)
+    s1 = {"concepts": [_c("a", "paper", ["b"]), _c("b", "paper")]}
+    assert _ids(clean_concepts(s1)) == ["a", "b"]
