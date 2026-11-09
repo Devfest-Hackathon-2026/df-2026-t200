@@ -100,6 +100,17 @@ export function FlowDiagram({
       <p className="flow-note small muted">AIが論文から作った図解です。根拠ページで確かめてください</p>
       <div className="flow-scroll" ref={scroller}>
         <div className="flow-canvas" style={{ width: layout.width, height: layout.height }}>
+          {layout.bands.length > 0 && (
+            <div className="flow-bands" aria-hidden="true">
+              {layout.bands.map((b, k) => (
+                <div key={b.group} className={`flow-band flow-band-${k % 4}`} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
+                  <span className="flow-band-label" title={b.group}>
+                    {b.group}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           <svg width={layout.width} height={layout.height} aria-hidden="true" focusable="false">
             <defs>
               {['', '-active'].map((s) => (
@@ -158,7 +169,7 @@ export function FlowDiagram({
                     type="button"
                     className={`flow-node ${n.kind} ${active ? 'active' : ''}`}
                     aria-current={active ? 'step' : undefined}
-                    aria-label={`${n.label}（${KIND_LABEL[n.kind]}）${n.shape ? ` 形 ${n.shape}` : ''}`}
+                    aria-label={`${n.label}（${KIND_LABEL[n.kind]}）${n.shape ? ` 形 ${n.shape}` : ''}${n.group?.trim() ? ` 段階 ${n.group.trim()}` : ''}`}
                     title={n.label}
                     onClick={() => onNode(n)}
                   >

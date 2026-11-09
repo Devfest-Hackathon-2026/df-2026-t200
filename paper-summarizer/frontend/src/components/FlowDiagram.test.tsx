@@ -291,4 +291,22 @@ describe('FlowDiagram scrolling', () => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
+  it('draws a labelled band per group, and reads the group in the node name', () => {
+    const grouped: Flow = {
+      ...flow,
+      nodes: flow.nodes.map((n, k) => ({ ...n, group: k === 0 ? '事前学習' : '微調整' })),
+    }
+    const { container } = render(<FlowDiagram flow={grouped} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
+    const bands = container.querySelectorAll('.flow-band')
+    expect(bands).toHaveLength(2)
+    expect(bands[0]).toHaveTextContent('事前学習')
+    expect(bands[1]).toHaveTextContent('微調整')
+    expect(screen.getByRole('button', { name: /入力の単語.*段階 事前学習/ })).toBeInTheDocument()
+  })
+
+  it('draws no band for an old flow without group', () => {
+    const { container } = render(<FlowDiagram flow={flow} total={2} index={0} onGo={() => {}} onNode={() => {}} />)
+    expect(container.querySelector('.flow-band')).toBeNull()
+    expect(screen.getByRole('button', { name: /入力の単語.*入力.*形 n×d/ }).getAttribute('aria-label')).not.toContain('段階')
+  })
 })
