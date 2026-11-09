@@ -358,3 +358,26 @@ def test_cancel_during_parallel_steps_discards_both_results():
     paper = store.load(pid)
     assert paper["status"] == "cancelled"
     assert set(paper["results"]) == {"step1"}
+
+
+def test_both_steps_failing_logs_the_second_error(caplog):
+    class BothFail(FakeAnalyzer):
+        def __init__(self):
+            super().__init__()
+            self.barrier = threading.Barrier(2, timeout=5)
+
+        def step2(self, src, s1):
+            self.barrier.wait()
+            raise RuntimeError("boom2")
+
+        def step3(self, src, s1):
+            self.barrier.wait()
+            raise RuntimeError("boom3")
+
+    pid = _new_paper(demo=False)
+    with caplog.at_level(logging.WARNING, logger="paper"):
+        _svc(BothFail()).run_analysis(pid)
+    paper = store.load(pid)
+    assert paper["status"] == "failed" and set(paper["results"]) == {"step1"}
+    # 最初の失敗（step2）が投げられ、step3 の失敗は警告に残る
+    assert f"paper={pid} step3 also failed: RuntimeError: boom3" in caplog.text

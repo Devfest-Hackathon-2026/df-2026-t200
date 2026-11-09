@@ -394,7 +394,19 @@ class PaperService:
 
         with ThreadPoolExecutor(max_workers=len(pending), thread_name_prefix=f"steps-{paper_id}") as pool:
             futures = [pool.submit(work, k) for k in pending]
-        outcomes = [f.result() for f in futures]  # 失敗は最初の例外をそのまま投げる（with を抜けた時点で全部終わっている）
+        # with を抜けた時点で全部終わっている。最初の失敗だけを投げ、2つ目以降はログに残す（失敗の原因を失わない）
+        outcomes: list[bool] = []
+        first_error: Exception | None = None
+        for key, future in zip(pending, futures, strict=True):
+            try:
+                outcomes.append(future.result())
+            except Exception as e:  # noqa: BLE001
+                if first_error is None:
+                    first_error = e
+                else:
+                    log.warning("paper=%s %s also failed: %s: %s", paper_id, key, type(e).__name__, e)
+        if first_error is not None:
+            raise first_error
         return all(outcomes)
 
     def take_over(self, paper_id: str, now: datetime | None = None) -> dict[str, Any] | None:
