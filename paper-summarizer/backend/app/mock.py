@@ -337,3 +337,12 @@ def concept_check(pages: list[str], targets: list[dict[str, Any]]) -> dict[str, 
         rest = q["choices"][1:]
         q["choices"] = [*rest[: q["correct_index"]], good, *rest[q["correct_index"] :]]
     return {"questions": questions}
+
+
+def simulate_writing(on_progress: Any, total_chars: int, seconds: float = 1.5, ticks: int = 6) -> None:
+    """Gemini のストリーミングのまね。数秒かけて書いた文字数を少しずつ増やす（画面の進捗表示を、デモや e2e で確かめられるようにする）。"""
+    if on_progress is None:
+        return
+    for i in range(1, ticks + 1):
+        time.sleep(seconds / ticks)
+        on_progress(total_chars * i // ticks)

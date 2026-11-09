@@ -14,9 +14,10 @@ import threading
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
-from . import config, store
+from . import config, events, store
 from .check_service import (
     CheckAlreadyAnswered,
     CheckBadAnswer,
@@ -160,7 +161,24 @@ def get_paper(paper_id: str, service: Service) -> dict[str, Any]:
     paper = _load_or_404(paper_id)
     if running(paper):  # 止まった解析なら、ここで引き継いで続きから走らせる
         paper = service.take_over(paper_id) or store.load(paper_id) or paper
-    return _public(paper)
+    # progress は、このプロセスで走っていればその詳細、無ければ記録の要約（解析中だけ）
+    return {**_public(paper), "progress": service.progress_of(paper)}
+
+
+@app.get("/api/papers/{paper_id}/events")
+def paper_events(paper_id: str, service: Service) -> StreamingResponse:
+    """解析の進捗を Server-Sent Events で送る。完了・失敗・中止で最後の1回を送って閉じる。接続の上限を超えたら 429（画面は問い合わせに戻る）。"""
+    _load_or_404(paper_id)
+    if not events.slots.acquire():
+        raise HTTPException(429, "進捗の接続が混み合っています。問い合わせで更新します。")
+    release = events.slots.releaser()
+    # 本体が一度も始まらないまま閉じられた場合に備えて、background でも枠を返す（二重には返さない）
+    return StreamingResponse(
+        events.event_stream(service, paper_id, release),
+        media_type="text/event-stream",
+        headers=events.HEADERS,
+        background=BackgroundTask(release),
+    )
 
 
 @app.get("/api/papers/{paper_id}/pdf", response_model=None)

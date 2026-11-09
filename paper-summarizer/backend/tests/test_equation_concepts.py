@@ -18,9 +18,9 @@ class FakeModels:
         self.payload = payload
         self.calls = []
 
-    def generate_content(self, model, contents, config):
+    def generate_content_stream(self, model, contents, config):
         self.calls.append({"contents": contents})
-        return SimpleNamespace(parsed=None, text=json.dumps(self.payload))
+        return iter([SimpleNamespace(text=json.dumps(self.payload))])
 
 
 @pytest.fixture

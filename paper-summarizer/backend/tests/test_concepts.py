@@ -16,14 +16,14 @@ PAGES = ["This is the first page of a sample paper about attention and reading s
 @pytest.fixture
 def fake(monkeypatch):
     def install(payload):
-        resp = SimpleNamespace(parsed=None, text=json.dumps(payload))
-        models = SimpleNamespace(generate_content=lambda **_k: resp, calls=[])
+        chunks = [SimpleNamespace(text=json.dumps(payload))]
+        models = SimpleNamespace(calls=[])
 
-        def generate_content(model, contents, config):
+        def generate_content_stream(model, contents, config):
             models.calls.append({"contents": contents})
-            return resp
+            return iter(chunks)
 
-        models.generate_content = generate_content
+        models.generate_content_stream = generate_content_stream
         monkeypatch.setattr(gemini, "client", lambda: SimpleNamespace(models=models))
         return models
 

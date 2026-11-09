@@ -16,7 +16,15 @@ log = logging.getLogger("paper")
 class Heartbeat:
     """with ブロックの間だけ、interval 秒ごとに heartbeat_at を書く。alive(記録) が偽なら書かない（中止・完了・失敗のあとに触らない）。"""
 
-    def __init__(self, paper_id: str, interval: float, alive: Callable[[dict[str, Any]], bool]):
+    def __init__(
+        self,
+        paper_id: str,
+        interval: float,
+        alive: Callable[[dict[str, Any]], bool],
+        extra: Callable[[], dict[str, Any]] | None = None,
+    ):
+        # extra は、heartbeat_at と同じ書き込みに載せる追加の項目（進捗の要約）。書き込みを増やさないための相乗り
+        self._extra = extra
         self._paper_id = paper_id
         self._interval = interval
         self._alive = alive
@@ -25,8 +33,9 @@ class Heartbeat:
 
     def beat(self) -> bool:
         """1回書く。記録が消えている・もう動いていない状態なら False。"""
+        extra = self._extra() if self._extra else {}
         try:
-            return store.mutate(self._paper_id, lambda p: {**p, "heartbeat_at": store.now()} if self._alive(p) else None) is not None
+            return store.mutate(self._paper_id, lambda p: {**p, "heartbeat_at": store.now(), **extra} if self._alive(p) else None) is not None
         except KeyError:
             return False
 

@@ -19,9 +19,19 @@ class FakeModels:
         self.payload = payload
         self.calls = []
 
-    def generate_content(self, model, contents, config):
+    def generate_content_stream(self, model, contents, config):
         self.calls.append({"model": model, "contents": contents, "config": config})
-        return SimpleNamespace(parsed=None, text=json.dumps(self.payload))
+        return iter(_chunks(json.dumps(self.payload)))
+
+
+def _chunks(text, size=40):
+    """本物のストリームのように、本文を細かい断片に分けて返す。"""
+    return [SimpleNamespace(text=text[i : i + size]) for i in range(0, len(text), size)] or [SimpleNamespace(text=text)]
+
+
+def _install_stream(monkeypatch, chunks):
+    models = SimpleNamespace(generate_content_stream=lambda **_k: chunks() if callable(chunks) else iter(chunks))
+    monkeypatch.setattr(gemini, "client", lambda: SimpleNamespace(models=models))
 
 
 @pytest.fixture
@@ -69,11 +79,66 @@ def test_ask_includes_history_and_current_step(fake):
     assert out["source"] in ("paper", "general_knowledge", "not_in_paper")
 
 
-def test_generate_prefers_parsed_response(monkeypatch):
-    parsed = SimpleNamespace(model_dump=lambda mode, by_alias=False: {"from": "parsed"})
-    resp = SimpleNamespace(parsed=parsed, text="ignored")
-    monkeypatch.setattr(gemini, "client", lambda: SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_k: resp)))
-    assert gemini._generate("m", [], gemini.Answer, "undergrad") == {"from": "parsed"}
+def test_generate_joins_streamed_chunks_and_validates_against_the_schema(monkeypatch):
+    payload = mock.ask(PAGES, "q")
+    _install_stream(monkeypatch, _chunks(json.dumps(payload, ensure_ascii=False), size=7))
+    out = gemini._generate("m", [], gemini.Answer, "undergrad")
+    assert out["answer"] == payload["answer"]
+
+
+def test_generate_reports_the_running_character_count(monkeypatch):
+    _install_stream(
+        monkeypatch, [SimpleNamespace(text='{"answer": "'), SimpleNamespace(text=None), SimpleNamespace(text="あいう"), SimpleNamespace(text='"}')]
+    )
+    seen = []
+    with pytest.raises(ValidationError):  # スキーマに合わない本文でも、受け取った文字数は先に伝える
+        gemini._generate("m", [], gemini.Answer, "undergrad", on_progress=seen.append)
+    assert seen == [12, 15, 17]  # 本文の無い断片（None）では呼ばない
+
+
+def test_generate_works_without_a_progress_callback(monkeypatch):
+    _install_stream(monkeypatch, _chunks(json.dumps(mock.ask(PAGES, "q"))))
+    assert gemini._generate("m", [], gemini.Answer, "undergrad")["answer"]
+
+
+def test_a_failing_progress_callback_does_not_break_the_analysis(monkeypatch):
+    _install_stream(monkeypatch, _chunks(json.dumps(mock.ask(PAGES, "q"))))
+
+    def boom(_n):
+        raise RuntimeError("x")
+
+    assert gemini._generate("m", [], gemini.Answer, "undergrad", on_progress=boom)["answer"]
+
+
+def test_step_functions_pass_the_progress_callback(fake):
+    fake(mock.step1(PAGES, "a.pdf"))
+    seen = []
+    gemini.step1(b"%PDF", "undergrad", on_progress=seen.append)
+    assert seen and seen == sorted(seen)
+
+
+def test_stream_that_breaks_midway_keeps_the_error_classification(monkeypatch):
+    from google.genai import errors as genai_errors
+
+    from app import errors
+
+    def broken():
+        yield SimpleNamespace(text='{"answer": ')
+        raise genai_errors.ServerError(503, {"error": {"message": "overloaded"}})
+
+    _install_stream(monkeypatch, broken)
+    with pytest.raises(genai_errors.ServerError) as e:
+        gemini._generate("m", [], gemini.Answer, "undergrad")
+    assert errors.user_message(e.value) == errors.UNAVAILABLE
+
+
+def test_stream_that_stops_midway_with_a_cut_json_is_a_bad_response(monkeypatch):
+    from app import errors
+
+    _install_stream(monkeypatch, [SimpleNamespace(text='{"answer": "途中')])
+    with pytest.raises(ValidationError) as e:
+        gemini._generate("m", [], gemini.Answer, "undergrad")
+    assert errors.user_message(e.value) == errors.BAD_RESPONSE
 
 
 @pytest.mark.parametrize(("project", "expected"), [("my-proj", {"vertexai": True, "project": "my-proj"}), ("", {"api_key": "k"})])
@@ -88,8 +153,7 @@ def test_client_selects_vertex_or_api_key(monkeypatch, project, expected):
 
 @pytest.mark.parametrize("text", ["", None, "   "])
 def test_generate_raises_clear_error_on_empty_response(monkeypatch, text):
-    resp = SimpleNamespace(parsed=None, text=text)
-    monkeypatch.setattr(gemini, "client", lambda: SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_k: resp)))
+    _install_stream(monkeypatch, [SimpleNamespace(text=text)])
     with pytest.raises(EmptyResponseError):
         gemini._generate("m", [], gemini.Answer, "undergrad")
 

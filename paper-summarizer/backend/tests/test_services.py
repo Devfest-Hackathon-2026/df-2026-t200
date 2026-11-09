@@ -199,8 +199,8 @@ def test_gemini_analyzer_creates_client_once_and_passes_it(monkeypatch):
     created = []
 
     class Models:
-        def generate_content(self, model, contents, config):
-            return SimpleNamespace(parsed=None, text=json.dumps(payload[0]))
+        def generate_content_stream(self, model, contents, config):
+            return iter([SimpleNamespace(text=json.dumps(payload[0]))])
 
     payload = [mock.step1(["Some page text about attention and reading. " * 4], "a.pdf")]
     monkeypatch.setattr(gemini, "client", lambda: created.append(1) or SimpleNamespace(models=Models()))
@@ -235,7 +235,7 @@ def test_gemini_analyzer_passes_paper_lang(monkeypatch):
     analyzer = GeminiAnalyzer()
     monkeypatch.setattr(analyzer, "_gemini", lambda: fake_mod)
     monkeypatch.setattr(analyzer, "_cli", lambda: None)
-    src = SimpleNamespace(pdf_bytes=b"", paper=SimpleNamespace(level="grad", lang="en"))
+    src = SimpleNamespace(pdf_bytes=b"", on_progress=None, paper=SimpleNamespace(level="grad", lang="en"))
     analyzer.step1(src)
     analyzer.step2(src, {})
     analyzer.step3(src, {})

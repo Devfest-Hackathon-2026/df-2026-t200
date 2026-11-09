@@ -10,7 +10,7 @@ import random
 import threading
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any, Protocol
@@ -23,6 +23,7 @@ from .errors import PaperNotFound, QuotaExceeded, RateLimited
 from .foundations import check_foundations
 from .heartbeat import Heartbeat
 from .pdf_utils import extract_pages, normalize, verify_all
+from .progress import ProgressTracker
 from .quota import DailyQuota
 from .ratelimit import RateLimiter
 from .schemas import Paper, QuizPick
@@ -40,6 +41,8 @@ class PaperSource:
     pdf_bytes: bytes
     pages: list[str]
     norm_pages: list[str]
+    # Gemini が書いた文字数（ここまでの合計）を受け取る。進捗を伝えない呼び出しでは None
+    on_progress: Callable[[int], None] | None = None
 
 
 class Analyzer(Protocol):
@@ -55,13 +58,19 @@ class DemoAnalyzer:
     """認証情報がないときのサンプル解析（mock）。"""
 
     def step1(self, src: PaperSource) -> dict[str, Any]:
-        return mock.step1(src.pages, src.paper.filename)
+        out = mock.step1(src.pages, src.paper.filename)
+        mock.simulate_writing(src.on_progress, 2400)
+        return out
 
     def step2(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
-        return mock.step2(src.pages)
+        out = mock.step2(src.pages)
+        mock.simulate_writing(src.on_progress, 3600)
+        return out
 
     def step3(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
-        return mock.step3(src.pages)
+        out = mock.step3(src.pages)
+        mock.simulate_writing(src.on_progress, 1800)
+        return out
 
     def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]:
         return mock.ask(src.pages, question)
@@ -93,13 +102,13 @@ class GeminiAnalyzer:
             return self._client
 
     def step1(self, src: PaperSource) -> dict[str, Any]:
-        return self._gemini().step1(src.pdf_bytes, src.paper.level, lang=src.paper.lang, cli=self._cli())
+        return self._gemini().step1(src.pdf_bytes, src.paper.level, lang=src.paper.lang, cli=self._cli(), on_progress=src.on_progress)
 
     def step2(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
-        return self._gemini().step2(src.pdf_bytes, src.paper.level, s1, lang=src.paper.lang, cli=self._cli())
+        return self._gemini().step2(src.pdf_bytes, src.paper.level, s1, lang=src.paper.lang, cli=self._cli(), on_progress=src.on_progress)
 
     def step3(self, src: PaperSource, s1: dict[str, Any]) -> dict[str, Any]:
-        return self._gemini().step3(src.pdf_bytes, src.paper.level, s1, lang=src.paper.lang, cli=self._cli())
+        return self._gemini().step3(src.pdf_bytes, src.paper.level, s1, lang=src.paper.lang, cli=self._cli(), on_progress=src.on_progress)
 
     def ask(self, src: PaperSource, question: str, history: list[dict[str, Any]], current_step: int | None) -> dict[str, Any]:
         return self._gemini().ask(src.pdf_bytes, src.paper.level, question, history, current_step, lang=src.paper.lang, cli=self._cli())
@@ -217,6 +226,7 @@ class PaperService:
         self.analyzers: Mapping[bool, Analyzer] = analyzers or {True: DemoAnalyzer(), False: GeminiAnalyzer()}
         # 同時に走る解析ジョブ数を制限（Cloud Tasks の同時実行数制限に相当。API のレート制限対策）
         self._job_slots = threading.BoundedSemaphore(max_jobs)
+        self.progress = ProgressTracker()
         self._running: set[str] = set()
         self._running_lock = threading.Lock()
         self._starter = starter or self._start_thread
@@ -318,6 +328,7 @@ class PaperService:
         finally:
             with self._running_lock:
                 self._running.discard(paper_id)
+            self.progress.clear(paper_id)
 
     def _analyze(self, paper_id: str) -> None:
         try:
@@ -332,16 +343,17 @@ class PaperService:
             analyzer = self.analyzer_for(paper)
             results = dict(paper.results)
             # 解析中は heartbeat_at を書き続ける（スレッドが消えたら止まり、別のプロセスが引き継げる）
-            with Heartbeat(paper_id, self._heartbeat_sec, running):
+            with Heartbeat(paper_id, self._heartbeat_sec, running, extra=lambda: self._progress_fields(paper_id)):
                 if not results.get("step1"):
                     # 中止されていたら進まない（状態の確認と書き込みを1回の操作で行う）
                     if store.transition(paper_id, not_cancelled, status="processing_step1", heartbeat_at=store.now()) is None:
                         log.info("paper=%s cancelled before step1", paper_id)
                         return
                     log.info("paper=%s step1 start (demo=%s)", paper_id, paper.demo)
-                    results = {**results, "step1": finalize_step("step1", analyzer.step1(src), src.norm_pages)}
+                    results = {**results, "step1": self._produce(paper_id, analyzer, "step1", src, results)}
                     if not self._save_result(paper_id, "step1", results["step1"]):
                         return
+                    self.progress.finish(paper_id, "step1")
                 if not self._run_parallel(paper_id, analyzer, src, results):
                     return
             store.transition(paper_id, not_cancelled, status="done", error=None, analysis_version=config.ANALYSIS_VERSION)
@@ -353,6 +365,25 @@ class PaperService:
                 store.transition(paper_id, not_cancelled, status="failed", error=errors.user_message(e))
             except KeyError:
                 log.warning("paper=%s disappeared during analysis", paper_id)
+
+    def _produce(self, paper_id: str, analyzer: Analyzer, key: str, src: PaperSource, results: dict[str, Any]) -> dict[str, Any]:
+        """1つの Step を生成して PDF と照合する。読み始め・書いた文字数・照合の段階を進捗に記録する。"""
+        self.progress.begin(paper_id, key)
+        counted = replace(src, on_progress=lambda n: self.progress.wrote(paper_id, key, n))
+        out = _generate_step(analyzer, key, counted, results)
+        self.progress.verifying(paper_id, key)
+        return finalize_step(key, out, src.norm_pages)
+
+    def _progress_fields(self, paper_id: str) -> dict[str, Any]:
+        """heartbeat の書き込みに相乗りして記録へ入れる、進捗の要約。"""
+        summary = self.progress.summary(paper_id)
+        return {"progress": summary} if summary else {}
+
+    def progress_of(self, paper: dict[str, Any]) -> dict[str, Any] | None:
+        """画面に出す進捗。解析中だけ返す。このプロセスで走っていればその詳細（経過時間つき）、無ければ記録の要約。"""
+        if not running(paper):
+            return None
+        return self.progress.snapshot(paper["id"]) or paper.get("progress")
 
     @staticmethod
     def _save_result(paper_id: str, key: str, value: dict[str, Any]) -> bool:
@@ -381,9 +412,10 @@ class PaperService:
 
         def work(key: str) -> bool:
             log.info("paper=%s %s start (demo=%s)", paper_id, key, src.paper.demo)
-            out = finalize_step(key, _generate_step(analyzer, key, src, results), src.norm_pages)
+            out = self._produce(paper_id, analyzer, key, src, results)
             if not self._save_result(paper_id, key, out):
                 return False
+            self.progress.finish(paper_id, key)
             log.info("paper=%s %s done", paper_id, key)
             with lock:
                 remaining.discard(key)
@@ -473,7 +505,7 @@ class PaperService:
         # 古い版で途中まで作った結果は、今の版のプロンプトで作り直す（古い結果に新しい版を付けない）
         restart = {} if paper.get("analysis_version") == config.ANALYSIS_VERSION else {"results": {}, "analysis_version": config.ANALYSIS_VERSION}
         # 引き継ぎの回数と古い heartbeat を消す（再実行の直後に、古い heartbeat で引き継がれないように）
-        restart = {**restart, "takeovers": 0, "heartbeat_at": None}
+        restart = {**restart, "takeovers": 0, "heartbeat_at": None, "progress": None}
         if store.transition(paper_id, retryable, status="queued", error=None, **restart) is None:
             return False
         self.start(paper_id)
