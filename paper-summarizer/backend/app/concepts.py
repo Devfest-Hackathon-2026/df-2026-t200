@@ -100,7 +100,10 @@ def clean_concepts(step1: dict[str, Any]) -> dict[str, Any]:
     drop = _too_deep(concepts)
     if drop:
         concepts = [{**c, "depends_on": [d for d in c.get("depends_on") or [] if d not in drop]} for c in concepts if c.get("id") not in drop]
-    log.info("concept graph: %s", " ".join(f"{k}={v}" for k, v in concept_stats(concepts).items()))  # 孤立は外さず、数だけ残す
+    try:  # ログのための計算なので、失敗しても Step 1 は落とさない。孤立は外さず、数だけ残す
+        log.info("concept graph: %s", " ".join(f"{k}={v}" for k, v in concept_stats(concepts).items()))
+    except Exception:  # noqa: BLE001
+        log.warning("concept graph stats failed", exc_info=True)
     return {**step1, "concepts": concepts}
 
 

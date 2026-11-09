@@ -103,7 +103,11 @@ export function FlowDiagram({
           {layout.bands.length > 0 && (
             <div className="flow-bands" aria-hidden="true">
               {layout.bands.map((b, k) => (
-                <div key={b.group} className={`flow-band flow-band-${k % 4}`} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
+                <div
+                  key={b.group}
+                  className={`flow-band flow-band-${k % 4} ${b.labelBelow ? 'label-below' : ''}`}
+                  style={{ left: b.x, top: b.y, width: b.w, height: b.h }}
+                >
                   <span className="flow-band-label" title={b.group}>
                     {b.group}
                   </span>

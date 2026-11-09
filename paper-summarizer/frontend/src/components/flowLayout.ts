@@ -40,14 +40,15 @@ export const FLOW_BAND_PAD = 8
 export const FLOW_BAND_LABEL_H = 20
 const BAND_TOP = FLOW_BAND_LABEL_H + FLOW_BAND_PAD
 
-export type FlowBand = { group: string; x: number; y: number; w: number; h: number }
+export type FlowBand = { group: string; x: number; y: number; w: number; h: number; labelBelow: boolean }
 
 /** 段階の名前。空・文字列でないものは「段階なし」 */
 const groupOf = (n: FlowNode): string | null => (typeof n.group === 'string' && n.group.trim() ? n.group.trim() : null)
 
 /**
  * 同じ層の中の縦の並びを、辺の交差が減るように整える（重心法。前の層→次の層、次の層→前の層を数回往復する）。
- * 段階があれば、同じ層でも段階ごとにまとまるよう、段階の順を第一のキーにする。
+ * 段階があれば、同じ層でも段階ごとにまとまるよう、段階の順位（先に出た段階ほど小さい）を第一のキーにする。
+ * 段階なしのノードは順位 0 なので、段階ありのノードより先（各層の上側）に寄る。
  */
 function orderColumns(cols: FlowNode[][], edges: FlowEdge[], groupRank: (n: FlowNode) => number) {
   const rowOf = new Map<string, number>()
@@ -94,7 +95,7 @@ export function layoutFlow(nodes: FlowNode[], edges: FlowEdge[]): FlowLayout {
 
   const groups = [...new Set(nodes.flatMap((n) => groupOf(n) ?? []))]
   const hasGroups = groups.length > 0
-  // 段階なしのノードは、段階ありのノードの間で動かさない（順序の基準を 0 にそろえる）
+  // 段階なしのノードは順位 0（各層の先頭側）、段階ありは 1 以上
   const groupRank = (n: FlowNode) => (hasGroups ? groups.indexOf(groupOf(n) ?? '') + 1 : 0)
   orderColumns(cols, edges, (n) => (groupOf(n) === null ? 0 : groupRank(n)))
 
@@ -104,7 +105,7 @@ export function layoutFlow(nodes: FlowNode[], edges: FlowEdge[]): FlowLayout {
   cols.forEach((col, ci) =>
     col.forEach((n, ri) => pos.set(n.id, { x: FLOW_PAD + ci * (FLOW_NODE_W + FLOW_COL_GAP), y: top + ri * (FLOW_NODE_H + rowGap) })),
   )
-  const bands: FlowBand[] = groups.map((g) => {
+  const rects: Omit<FlowBand, 'labelBelow'>[] = groups.map((g) => {
     const ps = nodes.filter((n) => groupOf(n) === g).map((n) => pos.get(n.id)!)
     const x0 = Math.min(...ps.map((p) => p.x)) - FLOW_BAND_PAD
     const y0 = Math.min(...ps.map((p) => p.y)) - BAND_TOP
@@ -112,6 +113,10 @@ export function layoutFlow(nodes: FlowNode[], edges: FlowEdge[]): FlowLayout {
     const y1 = Math.max(...ps.map((p) => p.y)) + FLOW_NODE_H + FLOW_BAND_PAD
     return { group: g, x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
   })
+  // 外接矩形が先の帯と重なる帯は、ラベルを下端に置く（ラベル同士が重ならないように）
+  const overlaps = (a: Omit<FlowBand, 'labelBelow'>, b: Omit<FlowBand, 'labelBelow'>) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  const bands: FlowBand[] = rects.map((r, k) => ({ ...r, labelBelow: rects.slice(0, k).some((o) => overlaps(r, o)) }))
   const rows = Math.max(1, ...cols.map((c) => c.length))
   return {
     pos,

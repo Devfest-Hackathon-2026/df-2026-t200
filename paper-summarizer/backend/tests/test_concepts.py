@@ -230,3 +230,14 @@ def test_clean_concepts_logs_stats_without_removing_isolated(caplog):
         out = clean_concepts(s1)
     assert _ids(out) == ["a", "b", "lonely"]
     assert any("isolated=1" in r.getMessage() and "max_depth=1" in r.getMessage() for r in caplog.records)
+
+
+def test_a_failure_in_the_stats_log_does_not_fail_step1(monkeypatch):
+    from app import concepts
+
+    def boom(_):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(concepts, "concept_stats", boom)
+    s1 = {"concepts": [_c("a", "paper", ["b"]), _c("b", "paper")]}
+    assert _ids(clean_concepts(s1)) == ["a", "b"]

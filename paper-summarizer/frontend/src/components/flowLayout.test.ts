@@ -144,4 +144,18 @@ describe('layoutFlow: group bands', () => {
     const ns = [{ ...node('a', 'input'), group: '' }, { ...node('b'), group: null }, node('c')]
     expect(layoutFlow(ns, [edge('a', 'b'), edge('b', 'c')]).bands).toEqual([])
   })
+
+  it('puts the label of a band that overlaps an earlier band at its bottom edge', () => {
+    // 層をまたいで段階が入れ違う: A は層0と層2、B は層1（A の外接矩形が B を含む）
+    const ns = [gnode('a1', 'A', 'input'), gnode('b1', 'B'), gnode('a2', 'A', 'output')]
+    const l = layoutFlow(ns, [edge('a1', 'b1'), edge('b1', 'a2')])
+    const [a, b] = l.bands
+    const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+    expect(overlap).toBe(true)
+    expect([a.labelBelow, b.labelBelow]).toEqual([false, true])
+  })
+
+  it('keeps labels on top when bands do not overlap', () => {
+    expect(layoutFlow(nodes, edges).bands.map((b) => b.labelBelow)).toEqual([false, false])
+  })
 })
