@@ -79,6 +79,8 @@ export function usePaper(id: string): PaperState {
       void tick()
     }
     const open = () => {
+      // 再接続の待ちのあいだにタイマーが上書きされ、unmount 後に呼ばれても接続を作らない
+      if (!loop.alive) return
       const source = new EventSource(api.eventsUrl(id))
       loop.source = source
       let received = false
